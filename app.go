@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"errors"
+	"net/url"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/KOMONG-Adventure/Faster_DM/internal/jobs"
 	"github.com/KOMONG-Adventure/Faster_DM/internal/updates"
@@ -37,6 +40,24 @@ func NewApp() *App                             { return &App{} }
 func (a *App) GetAppVersion() string           { return updates.Version }
 func (a *App) CheckForUpdates() updates.Result { return updates.Check(a.ctx) }
 func (a *App) OpenReleases()                   { wailsruntime.BrowserOpenURL(a.ctx, updates.ReleasesURL) }
+
+// Clipboard-ийн ердийн текстийг frontend рүү дамжуулахгүй, зөвхөн HTTP(S) URL авна.
+// Холбоосыг шалгах гэж сүлжээний хүсэлт илгээхгүй.
+func (a *App) ClipboardDownloadURL() (string, error) {
+	text, err := wailsruntime.ClipboardGetText(a.ctx)
+	if err != nil {
+		return "", err
+	}
+	text = strings.TrimSpace(text)
+	if len(text) == 0 || len(text) > 16384 || strings.IndexFunc(text, unicode.IsSpace) >= 0 {
+		return "", nil
+	}
+	u, err := url.Parse(text)
+	if err != nil || u.Hostname() == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", nil
+	}
+	return text, nil
+}
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.manager = jobs.New(ctx, func(job jobs.Job) { wailsruntime.EventsEmit(ctx, "download:changed", job) })

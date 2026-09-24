@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowDownToLine, FolderOpen, Link2, ArrowRight, Layers3, LoaderCircle } from 'lucide-react';
 import { api, desktop } from '../bridge';
 import { categoryFor, suggestName } from '../categories';
@@ -10,6 +10,52 @@ export function AddDownload({ folder, setFolder, onCreated }: { folder: string; 
   const [workers, setWorkers] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [autoClipboard, setAutoClipboard] = useState(() => { try { return localStorage.getItem('fasterdm.clipboard-auto') !== 'off'; } catch { return true; } });
+  const [clipboardNotice, setClipboardNotice] = useState('');
+  const lastClipboard = useRef('');
+  const autoFilled = useRef('');
+  useEffect(() => {
+    if (!desktop || !autoClipboard || busy || !api().ClipboardDownloadURL) return;
+    let disposed = false;
+    let reading = false;
+    async function poll() {
+      if (disposed || reading || document.hidden) return;
+      reading = true;
+      try {
+        const copied = await api().ClipboardDownloadURL();
+        if (disposed || copied === lastClipboard.current) return;
+        lastClipboard.current = copied;
+        if (copied && (!url || url === autoFilled.current)) {
+          autoFilled.current = copied;
+          setURL(copied);
+          setClipboardNotice('Хуулсан холбоос автоматаар орлоо. Татаж эхлэхэд бэлэн.');
+        }
+      } catch { /* Clipboard өөр аппд түр түгжигдвэл дараагийн мөчлөгт оролдоно. */ }
+      finally { reading = false; }
+    }
+    void poll();
+    const timer = window.setInterval(poll, 900);
+    window.addEventListener('focus', poll);
+    document.addEventListener('visibilitychange', poll);
+    return () => { disposed = true; clearInterval(timer); window.removeEventListener('focus', poll); document.removeEventListener('visibilitychange', poll); };
+  }, [autoClipboard, busy, url]);
+  function toggleClipboard(enabled: boolean) {
+    if (enabled) lastClipboard.current = '';
+    setAutoClipboard(enabled);
+    setClipboardNotice('');
+    try { localStorage.setItem('fasterdm.clipboard-auto', enabled ? 'on' : 'off'); } catch { /* энэ удаагийн тохиргоо хүчинтэй */ }
+  }
+  async function pasteLink() {
+    try {
+      if (!api().ClipboardDownloadURL) throw new Error('Шинэ EXE-г нээнэ үү.');
+      const copied = await api().ClipboardDownloadURL();
+      if (!copied) { setClipboardNotice('Clipboard дотор HTTP/HTTPS холбоос алга.'); return; }
+      lastClipboard.current = copied;
+      autoFilled.current = copied;
+      setURL(copied);
+      setClipboardNotice('Хуулсан холбоос орлоо.');
+    } catch { setClipboardNotice('Clipboard уншиж чадсангүй. Ctrl+V ашиглана уу.'); }
+  }
   const youtube = /^(https?:\/\/)?(www\.|m\.)?(youtube\.com|youtu\.be)\//i.test(url);
   const category = categoryFor(youtube ? 'video.mp4' : filename || suggestName(url));
   async function chooseFolder() {
@@ -20,7 +66,7 @@ export function AddDownload({ folder, setFolder, onCreated }: { folder: string; 
     event.preventDefault();
     if (busy) return;
     setBusy(true); setError('');
-    try { const job = await api().StartDownload({ url, filename, folder, workers }); onCreated(job); setURL(''); setFilename(''); }
+    try { const job = await api().StartDownload({ url, filename, folder, workers }); onCreated(job); setURL(''); setFilename(''); autoFilled.current = ''; setClipboardNotice(''); }
     catch (err) { setError(String(err)); }
     finally { setBusy(false); }
   }
@@ -28,7 +74,9 @@ export function AddDownload({ folder, setFolder, onCreated }: { folder: string; 
     <div className="flex items-center justify-between gap-3 mb-5"><div className="flex items-center gap-2.5"><span className="mini-icon"><Link2 size={17} /></span><h2 id="new-download-title">Шинэ таталт</h2></div><span className="auto-tag"><Layers3 size={13} /> Автоматаар ангилна</span></div>
     <form onSubmit={submit}>
       <label className="sr-only" htmlFor="source-url">Татах холбоос</label>
-      <div className="url-row"><Link2 className="shrink-0 text-slate-400" size={19}/><input id="source-url" type="url" required autoComplete="off" placeholder="Файлын эсвэл YouTube холбоос оруулна уу…" value={url} onChange={e => { setURL(e.target.value); }} /><button className="primary-button" disabled={busy || !desktop}>{busy ? <LoaderCircle size={17} className="animate-spin" /> : <ArrowDownToLine size={17} />} {busy ? 'Мэдээлэл авч байна…' : 'Татаж эхлэх'}</button></div>
+      <div className="url-row"><Link2 className="shrink-0 text-slate-400" size={19}/><input id="source-url" type="url" required autoComplete="off" placeholder="Файлын эсвэл YouTube холбоос оруулна уу…" value={url} onChange={e => { autoFilled.current = ''; setClipboardNotice(''); setURL(e.target.value); }} /><button className="primary-button" disabled={busy || !desktop}>{busy ? <LoaderCircle size={17} className="animate-spin" /> : <ArrowDownToLine size={17} />} {busy ? 'Мэдээлэл авч байна…' : 'Татаж эхлэх'}</button></div>
+      <div className="clipboard-options"><label><input type="checkbox" checked={autoClipboard} disabled={!desktop} onChange={e=>toggleClipboard(e.target.checked)}/> Хуулсан холбоосыг автоматаар оруулах</label><button type="button" disabled={!desktop || busy} onClick={pasteLink}>Хуулсан холбоос оруулах</button></div>
+      {clipboardNotice ? <p className="clipboard-notice" role="status">{clipboardNotice}</p> : null}
       <div className="form-details"><div className="filename-field"><label htmlFor="filename">Файлын нэр · автоматаар</label><input id="filename" maxLength={180} placeholder="Бичих шаардлагагүй — автоматаар нэрлэнэ" value={filename} onChange={e => setFilename(e.target.value)} /></div><div><label htmlFor="connections">Зэрэгцээ холболт</label><select id="connections" value={workers} onChange={e => setWorkers(Number(e.target.value))}><option value={0}>Автомат · 4–32</option>{[4,8,16,32].map(n => <option key={n} value={n}>{n} холболт</option>)}</select></div><button type="button" className="folder-picker" onClick={chooseFolder} disabled={!desktop}><FolderOpen size={17}/> Хавтас сонгох</button></div>
       <div className="save-preview"><FolderOpen size={14}/><input aria-label="Хадгалах үндсэн хавтас" className="folder-path" title={folder} placeholder="Хадгалах үндсэн хавтас" value={folder} onChange={e=>setFolder(e.target.value)}/><ArrowRight size={12}/><strong>{category.key}</strong>{filename ? <><ArrowRight size={12}/><span className="truncate">{filename}</span></> : null}</div>
       {error ? <p role="alert" className="form-error">{error}</p> : null}

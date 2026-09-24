@@ -1,6 +1,7 @@
 import type { Job, Request, State } from './types';
 
 interface API {
+	ClipboardDownloadURL(): Promise<string>;
 	MinimiseToTray(): Promise<void>;
   GetAppVersion(): Promise<string>;
   CheckForUpdates(): Promise<UpdateResult>;
