@@ -26,9 +26,9 @@ export const TransferStats = memo(function TransferStats(props: Sample) {
   const points = (key: 'network' | 'disk') => display.history.map((s, i) => `${i * 1000 / 59},${100 - Math.min(1, s[key] / ceiling) * 90}`).join(' ');
   return <section className="transfer-panel" aria-label="Сүлжээ болон дискний хурд">
     <div className="transfer-metrics">
-      <div><ChartNoAxesColumnIncreasing size={19}/><div><span>NETWORK <small>Сүлжээ</small></span><strong>{rate(display.network, true)}</strong></div></div>
-      <div><ChartNoAxesColumnIncreasing size={19}/><div><span>PEAK <small>Дээд хурд</small></span><strong>{rate(display.peak, true)}</strong></div></div>
-      <div className="disk-metric"><HardDrive size={18}/><div><span>DISK USAGE <small>Бичилт</small></span><strong>{display.diskKnown ? rate(display.disk) : '—'}</strong></div></div>
+      <div><ChartNoAxesColumnIncreasing size={19}/><div><span>СҮЛЖЭЭ</span><strong>{rate(display.network, true)}</strong></div></div>
+      <div><ChartNoAxesColumnIncreasing size={19}/><div><span>ДЭЭД ХУРД</span><strong>{rate(display.peak, true)}</strong></div></div>
+      <div className="disk-metric"><HardDrive size={18}/><div><span>ДИСКНИЙ БИЧИЛТ</span><strong>{display.diskKnown ? rate(display.disk) : '—'}</strong></div></div>
     </div>
     <svg className="transfer-graph" viewBox="0 0 1000 104" preserveAspectRatio="none" aria-hidden="true">
       {[25, 50, 75, 100].map(y => <line key={y} x1="0" y1={y} x2="1000" y2={y} className="graph-grid"/>)}
@@ -36,6 +36,6 @@ export const TransferStats = memo(function TransferStats(props: Sample) {
       <polyline points={points('network')} className="network-line"/>
       {display.history.every(s => s.diskKnown) ? <polyline points={points('disk')} className="disk-line"/> : null}
     </svg>
-    <div className="transfer-caption"><span>Сүүлийн 30 секунд · Бүх таталтын нийлбэр</span><span>{display.diskKnown ? 'Диск: аппын бичилт · OS cache багтана' : 'YouTube-ийн дискний хурд хэмжигдэхгүй'}</span></div>
+    <div className="transfer-caption"><span>30 секунд · Нийлбэр хурд</span><span>{display.diskKnown ? 'Аппын бичилт (OS cache)' : 'YouTube-ийн дискний хурд хэмжигдэхгүй'}</span></div>
   </section>;
 });
