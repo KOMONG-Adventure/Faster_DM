@@ -198,7 +198,10 @@ func (e *Engine) parallel(ctx context.Context, url string, meta metadata, f *os.
 }
 
 func (e *Engine) downloadChunk(ctx context.Context, url string, meta metadata, f *os.File, s *scheduler, c *chunk, buf []byte) error {
-	for attempt := 0; ; attempt++ {
+	for attempt := 0; ; {
+		if err := e.cfg.Control.Wait(ctx); err != nil {
+			return err
+		}
 		start, end := s.bounds(c)
 		if start == end {
 			return nil
@@ -211,6 +214,10 @@ func (e *Engine) downloadChunk(ctx context.Context, url string, meta metadata, f
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if errors.Is(err, errPaused) {
+			s.mark(c, "paused", false)
+			continue
+		}
 		if attempt >= e.cfg.MaxRetries || !retryable(err) {
 			return fmt.Errorf("chunk %d: %w", c.id, err)
 		}
@@ -218,6 +225,7 @@ func (e *Engine) downloadChunk(ctx context.Context, url string, meta metadata, f
 		if err := backoff(ctx, attempt, err); err != nil {
 			return err
 		}
+		attempt++
 	}
 }
 
@@ -286,7 +294,10 @@ func (e *Engine) rangeOnce(ctx context.Context, url string, meta metadata, f *os
 func (e *Engine) sequential(ctx context.Context, url string, f *os.File, s *scheduler) error {
 	buf := make([]byte, e.cfg.BufferSize)
 	c := s.chunks[0]
-	for attempt := 0; ; attempt++ {
+	for attempt := 0; ; {
+		if err := e.cfg.Control.Wait(ctx); err != nil {
+			return err
+		}
 		s.mark(c, "downloading", false)
 		err := e.sequentialOnce(ctx, url, f, s, c, buf)
 		if err == nil {
@@ -296,6 +307,10 @@ func (e *Engine) sequential(ctx context.Context, url string, f *os.File, s *sche
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if errors.Is(err, errPaused) {
+			s.mark(c, "paused", false)
+			continue
+		}
 		if attempt >= e.cfg.MaxRetries || !retryable(err) {
 			return err
 		}
@@ -303,6 +318,7 @@ func (e *Engine) sequential(ctx context.Context, url string, f *os.File, s *sche
 		if err := backoff(ctx, attempt, err); err != nil {
 			return err
 		}
+		attempt++
 	}
 }
 

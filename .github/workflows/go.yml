@@ -1,4 +1,4 @@
-name: Go engine checks
+name: Faster DM checks and Windows app
 
 on:
   push:
@@ -19,7 +19,34 @@ jobs:
         with:
           go-version: stable
           cache: false
+      - run: go test ./internal/... ./cmd/...
+      - run: go vet ./internal/... ./cmd/...
+      - run: go test -race ./internal/... ./cmd/...
+        if: runner.os == 'Linux'
+  desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
       - run: go test ./...
       - run: go vet ./...
-      - run: go test -race ./...
-        if: runner.os == 'Linux'
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+      - run: wails build -s -webview2 download
+      - run: ./scripts/setup-media.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FasterDM-Windows
+          path: |
+            build/bin/FasterDM.exe
+            build/bin/tools/

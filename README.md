@@ -2,9 +2,48 @@
 
 Репозиторий: https://github.com/KOMONG-Adventure/Faster_DM
 
-Энэ хувилбар **1-р алхам: архитектур**, **2-р алхам: Go таталтын engine**-ийг хэрэгжүүлсэн.
-Кодын тайлбар, ажиллуулах заавар монгол хэлтэй. Одоогоор ажиллах CLI бий;
-Wails цонх, React UI, OTA updater нь дараагийн 3–5-р алхамд нэмэгдэнэ.
+Монгол хэлтэй **Wails v2 + React 18 dashboard** болон Go таталтын engine.
+Давхар товшиж нээх файл: **`build/bin/FasterDM.exe`**. Таталт дуусахад цонх хаагдахгүй.
+
+## Шууд ашиглах
+
+1. `FasterDM.exe`-г нээнэ. Өөр компьютерт зөөхдөө хажуугийн `tools` хавтсыг хамт хуулна.
+2. Файлын эсвэл YouTube видеоны холбоосоо оруулаад **Татаж эхлэх** дарна.
+3. **Файлын нэр бичих шаардлагагүй.** Серверийн `Content-Disposition`, URL болон
+   `Content-Type`-оос нэр/өргөтгөлийг автоматаар авна. Хүсвэл нэрийг өөрчилж болно.
+4. Таталтыг **Түр зогсоох / Үргэлжлүүлэх** товчоор удирдана. `×` товч бүрэн цуцална.
+5. Нийт хувь, татсан хэмжээ, хурд, өнгөрсөн хугацаа, үлдсэн хугацааны тооцоо болон
+   хэсэг бүрийн progress-ийг дэлгэцээс харна. Дууссан файлын **Хавтас нээх** товч бий.
+
+Анхдагч үндсэн хавтас: `%USERPROFILE%\Downloads\Faster DM`.
+
+| Файлын төрөл | Автоматаар орох хавтас | Жишээ |
+|---|---|---|
+| Видео | `Videos` | mp4, mkv, webm, mov |
+| Зураг | `Photos` | jpg, png, webp, gif |
+| Архив | `Archives` | zip, rar, 7z, tar.gz |
+| Аудио | `Audio` | mp3, m4a, flac, wav |
+| Баримт | `Documents` | pdf, docx, xlsx, txt |
+| Бусад | `Other` | exe, bin, танигдаагүй өргөтгөл |
+
+Байгаа файлыг дарж бичихгүй: `name (1).zip` гэх мэт шинэ нэр өгнө.
+Зэрэг 4 хүртэл файл, HTTP файл бүрд 4/8/16/32 холболт сонгож болно.
+
+**Pause/resume:** апп нээлттэй байх хугацаанд ажиллана. HTTP Range + strong ETag
+дэмжвэл дискэнд хадгалсан offset-оос үргэлжилнэ. Дэмжихгүй серверийн single-stream
+таталтыг үргэлжлүүлэх үед эхнээс нь дахин татна. Pause хугацааг өнгөрсөн таталтын
+хугацаанд тооцохгүй; ETA нь сүүлийн хурдны жигдрүүлсэн дунджаар бодсон ойролцоо утга.
+Апп хаагдсаны дараах persistent resume/history одоогоор ороогүй.
+
+**YouTube:** нийтэд нээлттэй нэг видеог нэрээр нь `Videos/*.mp4` болгон,
+боломжтой үед 1080p хүртэл аудиотой татна. `yt-dlp` + Deno + FFmpeg ашиглана.
+Энэ горимд HTTP engine-ийн chunk grid ашиглахгүй, видео/аудионы нийт явцыг харуулна.
+Playlist, live stream, нэвтрэх/насны баталгаажуулалт шаардсан видеог дэмжихгүй.
+YouTube-ийн үйлчилгээний өөрчлөлт, бүсийн хязгаарлалтаас таталт амжилтгүй болж болно.
+Helper-уудын эх үүсвэр, лиценз: [THIRD_PARTY.md](THIRD_PARTY.md).
+
+Шууд HTTP файл нь файлын өргөтгөлөөс үл хамааран татагдана; нэрэнд `.mp3` нэмэх нь
+видеог MP3 болгон хувиргахгүй. YouTube нь одоогоор MP4 гаралттай.
 
 ## 1. Архитектур ба хамаарлууд
 
@@ -27,21 +66,25 @@ Faster_DM/
     └── engine_test.go              # Жинхэнэ HTTP test server-тэй тестүүд
 ```
 
-### Дараагийн алхмуудын бүтэц
+### Dashboard-ийн нэмэлт бүтэц
 
 ```text
 main.go                             # Wails v2 цонх, lifecycle
-app.go                              # StartDownload/CancelDownload binding
+app.go                              # Start/Pause/Resume/Cancel болон Wails events
 wails.json
-internal/jobs/                      # Job ID, queue, context cancellation
-internal/updater/                   # GitHub Releases, шалгалт, restart helper
+internal/jobs/                      # Job ID, хугацаа, хурд, хавтас ангилал
+internal/source/                    # Автомат файлын нэр
+internal/media/                     # YouTube, yt-dlp, FFmpeg процессын lifecycle
+scripts/setup-media.ps1             # Checksum шалгалттай helper татах
+build.ps1                          # Windows апп build хийх
 frontend/
 ├── package.json
 └── src/
     ├── App.tsx
     ├── components/DownloadCard.tsx
-    ├── components/ChunkMap.tsx
-    └── hooks/useDownloadEvents.ts
+    ├── components/ChunkPanel.tsx
+    ├── components/AddDownload.tsx
+    └── bridge.ts
 ```
 
 ```mermaid
@@ -58,24 +101,23 @@ flowchart TD
 ```
 
 Engine нь Wails/React-ээс хамаарахгүй. Ингэснээр HTTP болон concurrency логикийг
-WebView-гүйгээр тестэлж болно. Wails bridge дараа нь job бүрд тусдаа context,
-progress channel үүсгэж, `download:progress` event илгээнэ. UI рүү зөвхөн
+WebView-гүйгээр тестэлж болно. Wails bridge job бүрд тусдаа context,
+progress channel үүсгэж, `download:changed` event илгээнэ. UI рүү зөвхөн
 snapshot дамжина; сүлжээний buffer, file handle дамжихгүй.
 
 ### Шаардлагатай багцууд
 
 | Давхарга | Багц / хэрэгсэл | Энэ алхмын төлөв |
 |---|---|---|
-| Engine | Go 1.22+; шинэ stable toolchain ашиглах | Хэрэгжсэн, зөвхөн стандарт сан |
-| Desktop | `github.com/wailsapp/wails/v2` | 5-р алхамд холбох |
-| UI | `react@18`, `react-dom@18` | 4-р алхамд |
-| Style | `tailwindcss`, `@tailwindcss/vite` | 4-р алхамд |
-| Animation | `framer-motion` | 4-р алхамд |
-| Frontend build | `vite`, `@vitejs/plugin-react`, `typescript`, `@types/react@18`, `@types/react-dom@18` | 4-р алхамд |
+| Engine | Go 1.25+; шинэ stable toolchain ашиглах | Хэрэгжсэн, engine стандарт сан ашиглана |
+| Desktop | `github.com/wailsapp/wails/v2` v2.15.0 | Холбогдсон |
+| UI | `react@18`, `react-dom@18` | Хэрэгжсэн |
+| Style | `tailwindcss`, `@tailwindcss/vite` | Хэрэгжсэн |
+| Animation | `framer-motion` | Хэрэгжсэн, reduced-motion дэмжинэ |
+| Frontend build | `vite`, `@vitejs/plugin-react`, `typescript`, `@types/react@18`, `@types/react-dom@18` | Lockfile-д түгжсэн |
 | OTA | `github.com/creativeprojects/go-selfupdate` эсвэл шалгасан native updater | 3-р алхамд сонгож түгжих |
 
-Одоогийн engine-д `go get` болон `npm install` шаардлагагүй. UI/updater багцуудыг
-хэрэгжүүлэх үед нийцтэй хувилбаруудыг сонгож, `go.sum` болон NPM lockfile-д түгжинэ.
+Go хамаарлууд `go.mod/go.sum`, UI хамаарлууд `frontend/package-lock.json`-д түгжигдсэн.
 Wails v2 хөгжүүлэлтийн үед платформын build dependencies шаардлагатай;
 Windows дээр WebView2 runtime-ийг мөн шалгана.
 [Wails v2 суулгах албан ёсны заавар](https://v2.wails.io/docs/gettingstarted/installation/).
@@ -185,13 +227,27 @@ Channel дүүрсэн үед snapshot алгасагдана. Эцсийн ам
 
 ### Ажиллуулах
 
+**Windows dashboard build:** Go 1.25+, Node.js 22+, WebView2 runtime шаардлагатай.
+
+```powershell
+.\build.ps1
+```
+
+Үр дүн: `build/bin/FasterDM.exe`, YouTube helper-ууд `build/bin/tools/`.
+`bin/fasterdm.exe` замд мөн GUI executable-ийн хуулбар үүсгэнэ.
+Wails dev орчин: `wails dev`. Production exe нь Vite/dev server шаарддаггүй.
+GitHub Actions нь push бүрд Windows portable artifact үүсгэнэ; Actions доторх
+`FasterDM-Windows` artifact-ийг бүтнээр нь татаж задална.
+
+**CLI нь тусдаа:**
+
 PowerShell:
 
 ```powershell
-go test ./...
-go vet ./...
-go build -o bin/fasterdm.exe ./cmd/fasterdm
-./bin/fasterdm.exe -url "https://your-server.example/file.zip" -out "D:\Downloads\file.zip" -workers 16
+go test ./internal/... ./cmd/...
+go vet ./internal/... ./cmd/...
+go build -o bin/fasterdm-cli.exe ./cmd/fasterdm
+./bin/fasterdm-cli.exe -url "https://your-server.example/file.zip" -out "D:\Downloads\file.zip" -workers 16
 ```
 
 URL-ийг бодит файлын холбоосоор солино. Хадгалах хавтас өмнө нь үүссэн байх,
@@ -209,7 +265,7 @@ Race detector ажиллуулахад cgo болон нийцтэй C compiler 
 
 ```powershell
 $env:CGO_ENABLED = '1'
-go test -race ./...
+go test -race ./internal/... ./cmd/...
 ```
 
 ### Баталгаажуулалт ба одоогийн хязгаар
@@ -236,5 +292,5 @@ go test -race ./...
 3. GitHub Releases updater: хувилбар/OS/архитектур шалгалт, баталгаажуулсан artifact,
    rollback болон graceful restart. Windows дээр ажиллаж буй `.exe`-г шууд дарж
    бичихэд найдахгүй; process гарсны дараа солих туслах процесс хэрэгтэй.
-4. Монгол хэлтэй React 18/Tailwind/Framer Motion UI, нийт progress ба chunk map.
-5. Wails v2 bindings, job lifecycle, progress event болон cancel ажиллагаа.
+4–5-р алхмын dashboard болон Wails bindings хэрэгжсэн. OTA updater болон
+итгэмжлэгдсэн code signing одоогоор ороогүй.

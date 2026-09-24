@@ -5,3 +5,5 @@
 *.part
 coverage.out
 /.cache/
+/frontend/wailsjs/
+*.syso

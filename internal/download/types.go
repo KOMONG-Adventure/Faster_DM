@@ -21,6 +21,8 @@ type Config struct {
 	ProgressInterval time.Duration
 	// Client-ийг өгвөл engine түүнийг өөрчлөхгүй. Timeout нь хүсэлтийн нийт хугацааг хязгаарлана.
 	Client *http.Client
+	// Control nil байж болно. Таталт бүр өөр Control ашиглана.
+	Control *Control
 }
 
 func DefaultConfig() Config {

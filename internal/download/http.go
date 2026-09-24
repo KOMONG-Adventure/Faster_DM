@@ -28,9 +28,11 @@ func (e *responseError) Error() string { return fmt.Sprintf("HTTP %d", e.status)
 // Timer нь хүсэлтийн нийт хугацаа бус, өгөгдөл ирэхгүй удах хугацааг хязгаарлана.
 type idleBody struct {
 	io.ReadCloser
-	timer   *time.Timer
-	cancel  context.CancelFunc
-	timeout time.Duration
+	timer        *time.Timer
+	cancel       context.CancelFunc
+	timeout      time.Duration
+	pauseContext context.Context
+	release      func()
 }
 
 func (b *idleBody) Read(p []byte) (int, error) {
@@ -38,15 +40,28 @@ func (b *idleBody) Read(p []byte) (int, error) {
 	if n > 0 {
 		b.timer.Reset(b.timeout)
 	}
+	if err != nil && errors.Is(context.Cause(b.pauseContext), errPaused) {
+		return n, errPaused
+	}
 	return n, err
 }
-func (b *idleBody) Close() error { b.timer.Stop(); b.cancel(); return b.ReadCloser.Close() }
+func (b *idleBody) Close() error {
+	b.timer.Stop()
+	b.cancel()
+	b.release()
+	return b.ReadCloser.Close()
+}
 
 func (e *Engine) get(ctx context.Context, url, byteRange, etag string) (*http.Response, error) {
-	rctx, cancel := context.WithCancel(ctx)
+	pauseCtx, release, err := e.cfg.Control.request(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rctx, cancel := context.WithCancel(pauseCtx)
 	req, err := http.NewRequestWithContext(rctx, http.MethodGet, url, nil)
 	if err != nil {
 		cancel()
+		release()
 		return nil, err
 	}
 	req.Header.Set("Accept-Encoding", "identity")
@@ -62,10 +77,15 @@ func (e *Engine) get(ctx context.Context, url, byteRange, etag string) (*http.Re
 	resp, err := e.client.Do(req)
 	if err != nil {
 		timedOut := rctx.Err() != nil
+		paused := errors.Is(context.Cause(pauseCtx), errPaused)
 		timer.Stop()
 		cancel()
+		release()
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
+		}
+		if paused {
+			return nil, errPaused
 		}
 		// Манай idle timer-ээр тасарсан хүсэлтийг дахин оролдож болно.
 		if timedOut {
@@ -73,7 +93,7 @@ func (e *Engine) get(ctx context.Context, url, byteRange, etag string) (*http.Re
 		}
 		return nil, err
 	}
-	resp.Body = &idleBody{ReadCloser: resp.Body, timer: timer, cancel: cancel, timeout: e.cfg.IdleTimeout}
+	resp.Body = &idleBody{ReadCloser: resp.Body, timer: timer, cancel: cancel, timeout: e.cfg.IdleTimeout, pauseContext: pauseCtx, release: release}
 	if encoding := resp.Header.Get("Content-Encoding"); encoding != "" && !strings.EqualFold(encoding, "identity") {
 		resp.Body.Close()
 		return nil, fmt.Errorf("%w: Content-Encoding=%s", ErrProtocol, encoding)
@@ -129,10 +149,13 @@ func statusError(resp *http.Response) error {
 }
 
 func (e *Engine) probe(ctx context.Context, url string) (metadata, error) {
-	for attempt := 0; ; attempt++ {
+	for attempt := 0; ; {
 		m, err := e.probeOnce(ctx, url)
 		if err == nil {
 			return m, nil
+		}
+		if errors.Is(err, errPaused) {
+			continue
 		}
 		if attempt >= e.cfg.MaxRetries || !retryable(err) {
 			return m, err
@@ -140,6 +163,7 @@ func (e *Engine) probe(ctx context.Context, url string) (metadata, error) {
 		if err = backoff(ctx, attempt, err); err != nil {
 			return m, err
 		}
+		attempt++
 	}
 }
 
