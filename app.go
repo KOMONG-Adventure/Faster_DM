@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -34,10 +35,12 @@ type App struct {
 	updating       bool
 	updateMu       sync.Mutex
 	updateProgress updates.Progress
+	historyError   string
 }
 type State struct {
-	Jobs   []jobs.Job `json:"jobs"`
-	Folder string     `json:"folder"`
+	HistoryError string     `json:"historyError"`
+	Jobs         []jobs.Job `json:"jobs"`
+	Folder       string     `json:"folder"`
 }
 
 func NewApp() *App                             { return &App{} }
@@ -118,7 +121,19 @@ func (a *App) ClipboardDownloadURL() (string, error) {
 }
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	a.manager = jobs.New(ctx, func(job jobs.Job) { wailsruntime.EventsEmit(ctx, "download:changed", job) })
+	emit := func(job jobs.Job) { wailsruntime.EventsEmit(ctx, "download:changed", job) }
+	config, err := os.UserConfigDir()
+	if err == nil {
+		a.manager, err = jobs.NewPersistent(ctx, emit, filepath.Join(config, "FasterDM", "history"))
+	} else {
+		a.manager = jobs.New(ctx, emit)
+	}
+	if err != nil {
+		a.historyError = "Таталтын түүхийг бүрэн ачаалж чадсангүй: " + err.Error()
+	}
+	if err = a.manager.ImportCompleted(jobs.DefaultFolder()); err != nil {
+		a.historyError = "Хуучин таталтын түүх сэргээхэд алдаа гарлаа: " + err.Error()
+	}
 }
 func (a *App) shutdown(context.Context) { a.closing.Store(true); a.stopTray(); a.manager.Close() }
 func (a *App) MinimiseToTray() error {
@@ -156,7 +171,9 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	answer, err := wailsruntime.MessageDialog(ctx, wailsruntime.MessageDialogOptions{Type: wailsruntime.QuestionDialog, Title: "Таталт үргэлжилж байна", Message: "Аппыг хаавал идэвхтэй таталтууд цуцлагдана. Хаах уу?", Buttons: []string{"Yes", "No"}, DefaultButton: "No", CancelButton: "No"})
 	return err != nil || answer != "Yes"
 }
-func (a *App) GetState() State { return State{Jobs: a.manager.List(), Folder: jobs.DefaultFolder()} }
+func (a *App) GetState() State {
+	return State{Jobs: a.manager.List(), Folder: jobs.DefaultFolder(), HistoryError: a.historyError}
+}
 func (a *App) StartDownload(req jobs.Request) (jobs.Job, error) {
 	a.actionMu.Lock()
 	defer a.actionMu.Unlock()

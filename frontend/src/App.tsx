@@ -33,7 +33,7 @@ export default function App() {
     const unsubscribe = subscribe(job => { const previous = pending.current.get(job.id); if (!previous || previous.revision < job.revision) pending.current.set(job.id,job); });
     // Нэг frame-д ирсэн олон snapshot-ийг нэг React update болгон нэгтгэнэ.
     const timer = window.setInterval(() => { if (!pending.current.size) return; const batch=[...pending.current.values()]; pending.current.clear(); setJobs(previous=>batch.reduce(merge,previous)); }, 33);
-    api().GetState().then(state => { if (!live) return; setFolder(state.folder); setJobs(previous=>state.jobs.reduce(merge,previous)); }).catch(err=>{ if(live) setError(String(err)); });
+    api().GetState().then(state => { if (!live) return; setFolder(state.folder); if(state.historyError) setError(state.historyError); setJobs(previous=>state.jobs.reduce(merge,previous)); }).catch(err=>{ if(live) setError(String(err)); });
     return () => { live=false; unsubscribe(); clearInterval(timer); };
   }, []);
   const onCreated = useCallback((job: Job) => { setJobs(previous=>merge(previous,job)); setSelected(job.id); setCategory('all'); setFilter('all'); setQuery(''); }, []);

@@ -14,7 +14,7 @@ import (
 )
 
 // Release build-д -ldflags "-X .../internal/updates.Version=0.2.0" ашиглаж өөрчилнө.
-var Version = "0.4.1"
+var Version = "0.4.2"
 
 const ReleasesURL = "https://github.com/KOMONG-Adventure/Faster_DM/releases"
 const LatestAPI = "https://api.github.com/repos/KOMONG-Adventure/Faster_DM/releases/latest"

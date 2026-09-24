@@ -3,6 +3,7 @@ package jobs
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"math"
@@ -27,6 +28,7 @@ type Request struct {
 }
 
 type Job struct {
+	Restored       bool              `json:"restored"`
 	ID             string            `json:"id"`
 	Filename       string            `json:"filename"`
 	Path           string            `json:"path"`
@@ -55,14 +57,15 @@ type entry struct {
 	rateAt         time.Time
 }
 type Manager struct {
-	mu       sync.Mutex
-	ctx      context.Context
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
-	entries  map[string]*entry
-	sequence uint64
-	emit     func(Job)
-	closed   bool
+	mu         sync.Mutex
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	entries    map[string]*entry
+	sequence   uint64
+	emit       func(Job)
+	closed     bool
+	historyDir string
 }
 
 func New(ctx context.Context, emit func(Job)) *Manager {
@@ -206,7 +209,7 @@ func (m *Manager) Start(req Request) (Job, error) {
 		}
 	}
 	m.sequence++
-	id := fmt.Sprintf("%d-%d", time.Now().UnixMilli(), m.sequence)
+	id := fmt.Sprintf("%d-%s", time.Now().UnixMilli(), rand.Text())
 	ctx, cancel := context.WithCancel(m.ctx)
 	job := Job{ID: id, Filename: name, Path: filepath.Join(dir, name), Category: category, CreatedAt: time.Now().Format(time.RFC3339), Revision: 1, Workers: req.Workers, Status: "probing", Progress: download.Snapshot{Total: -1, Status: "probing", Chunks: []download.ChunkSnapshot{}}}
 	job.SourceKind = sourceKind
@@ -216,6 +219,12 @@ func (m *Manager) Start(req Request) (Job, error) {
 	m.entries[id] = &entry{job: job, cancel: cancel, control: control, started: time.Now(), rateAt: time.Now()}
 	m.wg.Add(1)
 	m.mu.Unlock()
+	if err := m.persist(job); err != nil {
+		m.mu.Lock()
+		m.entries[id].job.Error = "Түүх хадгалж чадсангүй: " + err.Error()
+		job = m.entries[id].job
+		m.mu.Unlock()
+	}
 	go m.run(ctx, job, req.URL, control)
 	return job, nil
 }
@@ -270,6 +279,14 @@ func (m *Manager) update(id string, change func(*Job)) {
 	e.job.Revision++
 	job := e.job
 	m.mu.Unlock()
+	if !isActive(job.Status) {
+		if err := m.persist(job); err != nil {
+			m.mu.Lock()
+			e.job.Error = "Түүх хадгалж чадсангүй: " + err.Error()
+			job = e.job
+			m.mu.Unlock()
+		}
+	}
 	if m.emit != nil && m.ctx.Err() == nil {
 		m.emit(job)
 	}
@@ -367,7 +384,14 @@ func (m *Manager) List() []Job {
 		job.Progress.Chunks = append([]download.ChunkSnapshot{}, job.Progress.Chunks...)
 		result = append(result, job)
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].ID > result[j].ID })
+	sort.Slice(result, func(i, j int) bool {
+		a, _ := time.Parse(time.RFC3339, result[i].CreatedAt)
+		b, _ := time.Parse(time.RFC3339, result[j].CreatedAt)
+		if a.Equal(b) {
+			return result[i].ID > result[j].ID
+		}
+		return a.After(b)
+	})
 	return result
 }
 
