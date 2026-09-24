@@ -289,6 +289,14 @@ go test -race ./internal/... ./cmd/...
 
 ### Дараагийн алхам
 
+Sidebar-ийн **Шинэчлэлт шалгах** товч GitHub Releases-ийн хамгийн сүүлийн
+тогтвортой хувилбарыг шалгаж, одоогийн хувилбар болон шалгасан цагийг харуулна.
+Шинэ хувилбарыг **GitHub Releases** товчоор нээж татна. Зөвхөн git push хийх нь
+release нийтлэхгүй. Нийтэд нээлттэй release байхгүй бол үүнийг тусад нь мэдэгдэнэ.
+Энэ товч EXE-г автоматаар солихгүй. Release build-ийн хувилбарыг
+`-ldflags "-X github.com/KOMONG-Adventure/Faster_DM/internal/updates.Version=0.2.0"`
+аргаар тохируулна.
+
 3. GitHub Releases updater: хувилбар/OS/архитектур шалгалт, баталгаажуулсан artifact,
    rollback болон graceful restart. Windows дээр ажиллаж буй `.exe`-г шууд дарж
    бичихэд найдахгүй; process гарсны дараа солих туслах процесс хэрэгтэй.

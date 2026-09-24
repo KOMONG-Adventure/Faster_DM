@@ -1,6 +1,9 @@
 import type { Job, Request, State } from './types';
 
 interface API {
+  GetAppVersion(): Promise<string>;
+  CheckForUpdates(): Promise<UpdateResult>;
+  OpenReleases(): Promise<void>;
   GetState(): Promise<State>;
   StartDownload(request: Request): Promise<Job>;
   CancelDownload(id: string): Promise<void>;
@@ -9,6 +12,7 @@ interface API {
   ChooseFolder(): Promise<string>;
   OpenFolder(id: string): Promise<void>;
 }
+export interface UpdateResult { current: string; latest: string; status: 'available' | 'current' | 'unavailable' | 'error'; message: string; checkedAt: string; publishedAt: string }
 declare global {
   interface Window {
     go?: { main: { App: API } };

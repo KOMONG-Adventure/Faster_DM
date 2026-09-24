@@ -7,6 +7,7 @@ import (
 	"runtime"
 
 	"github.com/KOMONG-Adventure/Faster_DM/internal/jobs"
+	"github.com/KOMONG-Adventure/Faster_DM/internal/updates"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -19,7 +20,10 @@ type State struct {
 	Folder string     `json:"folder"`
 }
 
-func NewApp() *App { return &App{} }
+func NewApp() *App                             { return &App{} }
+func (a *App) GetAppVersion() string           { return updates.Version }
+func (a *App) CheckForUpdates() updates.Result { return updates.Check(a.ctx) }
+func (a *App) OpenReleases()                   { wailsruntime.BrowserOpenURL(a.ctx, updates.ReleasesURL) }
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.manager = jobs.New(ctx, func(job jobs.Job) { wailsruntime.EventsEmit(ctx, "download:changed", job) })
