@@ -1,0 +1,7 @@
+/bin/
+/build/bin/
+/frontend/node_modules/
+/frontend/dist/
+*.part
+coverage.out
+/.cache/
