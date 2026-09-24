@@ -13,7 +13,9 @@ var (
 )
 
 type Config struct {
-	Workers int
+	ResumePath string
+	Limiter    *Limiter
+	Workers    int
 	// Adaptive нь 64 MiB-аас том Range таталтын зэрэгцээ холболтыг автоматаар тохируулна.
 	Adaptive         bool
 	MinChunkSize     int64

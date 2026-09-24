@@ -38,9 +38,10 @@ type App struct {
 	historyError   string
 }
 type State struct {
-	HistoryError string     `json:"historyError"`
-	Jobs         []jobs.Job `json:"jobs"`
-	Folder       string     `json:"folder"`
+	Settings     jobs.Settings `json:"settings"`
+	HistoryError string        `json:"historyError"`
+	Jobs         []jobs.Job    `json:"jobs"`
+	Folder       string        `json:"folder"`
 }
 
 func NewApp() *App                             { return &App{} }
@@ -66,7 +67,7 @@ func (a *App) InstallUpdate(expectedTag string) (err error) {
 		return errors.New("Шинэчлэлт аль хэдийн эхэлсэн.")
 	}
 	for _, job := range a.manager.List() {
-		if job.Status == "probing" || job.Status == "downloading" || job.Status == "paused" || job.Status == "canceling" {
+		if job.Status == "queued" || job.Status == "probing" || job.Status == "downloading" || job.Status == "paused" || job.Status == "canceling" {
 			a.actionMu.Unlock()
 			return errors.New("Эхлээд идэвхтэй болон түр зогсоосон таталтаа дуусгах эсвэл цуцална уу. Шинэчлэлт аппыг дахин нээнэ.")
 		}
@@ -121,7 +122,13 @@ func (a *App) ClipboardDownloadURL() (string, error) {
 }
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	emit := func(job jobs.Job) { wailsruntime.EventsEmit(ctx, "download:changed", job) }
+	initNotifications()
+	emit := func(job jobs.Job) {
+		wailsruntime.EventsEmit(ctx, "download:changed", job)
+		if (job.Status == "complete" || job.Status == "failed") && a.manager.Settings().Notifications {
+			go notifyDownload(job)
+		}
+	}
 	config, err := os.UserConfigDir()
 	if err == nil {
 		a.manager, err = jobs.NewPersistent(ctx, emit, filepath.Join(config, "FasterDM", "history"))
@@ -160,7 +167,7 @@ func (a *App) showFromTray() {
 func (a *App) beforeClose(ctx context.Context) bool {
 	active := false
 	for _, j := range a.manager.List() {
-		if j.Status == "probing" || j.Status == "downloading" || j.Status == "canceling" || j.Status == "paused" {
+		if j.Status == "queued" || j.Status == "probing" || j.Status == "downloading" || j.Status == "canceling" || j.Status == "paused" {
 			active = true
 			break
 		}
@@ -168,11 +175,11 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	if !active {
 		return false
 	}
-	answer, err := wailsruntime.MessageDialog(ctx, wailsruntime.MessageDialogOptions{Type: wailsruntime.QuestionDialog, Title: "Таталт үргэлжилж байна", Message: "Аппыг хаавал идэвхтэй таталтууд цуцлагдана. Хаах уу?", Buttons: []string{"Yes", "No"}, DefaultButton: "No", CancelButton: "No"})
+	answer, err := wailsruntime.MessageDialog(ctx, wailsruntime.MessageDialogOptions{Type: wailsruntime.QuestionDialog, Title: "Таталт үргэлжилж байна", Message: "Таталтын явцыг хадгалаад хаах уу? Дараа нээхэд Үргэлжлүүлэх товчоор эхлүүлнэ. Range дэмждэггүй серверийн таталт эхнээсээ эхэлнэ.", Buttons: []string{"Yes", "No"}, DefaultButton: "No", CancelButton: "No"})
 	return err != nil || answer != "Yes"
 }
 func (a *App) GetState() State {
-	return State{Jobs: a.manager.List(), Folder: jobs.DefaultFolder(), HistoryError: a.historyError}
+	return State{Jobs: a.manager.List(), Folder: jobs.DefaultFolder(), HistoryError: a.historyError, Settings: a.manager.Settings()}
 }
 func (a *App) StartDownload(req jobs.Request) (jobs.Job, error) {
 	a.actionMu.Lock()
@@ -184,7 +191,50 @@ func (a *App) StartDownload(req jobs.Request) (jobs.Job, error) {
 }
 func (a *App) CancelDownload(id string) error { return a.manager.Cancel(id) }
 func (a *App) PauseDownload(id string) error  { return a.manager.Pause(id) }
-func (a *App) ResumeDownload(id string) error { return a.manager.Resume(id) }
+func (a *App) ResumeDownload(id string) error {
+	a.actionMu.Lock()
+	defer a.actionMu.Unlock()
+	if a.updating {
+		return errors.New("Шинэчлэлт суулгаж байна")
+	}
+	return a.manager.Resume(id)
+}
+func (a *App) SetDownloadSettings(s jobs.Settings) error { return a.manager.SetSettings(s) }
+func (a *App) RemoveHistory(id string) error             { return a.manager.Remove(id) }
+func (a *App) RetryDownload(id string) (jobs.Job, error) {
+	a.actionMu.Lock()
+	defer a.actionMu.Unlock()
+	if a.updating {
+		return jobs.Job{}, errors.New("Шинэчлэлт суулгаж байна")
+	}
+	return a.manager.Retry(id)
+}
+func (a *App) OpenFile(id string) error {
+	j, err := a.manager.Get(id)
+	if err != nil {
+		return err
+	}
+	if j.Status != "complete" {
+		return errors.New("Таталт дуусаагүй байна")
+	}
+	if _, err = os.Stat(j.Path); err != nil {
+		return errors.New("Файл олдсонгүй. Зөөгдсөн эсвэл устсан байж болно")
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer.exe", j.Path)
+	case "darwin":
+		cmd = exec.Command("open", j.Path)
+	default:
+		cmd = exec.Command("xdg-open", j.Path)
+	}
+	if err = cmd.Start(); err != nil {
+		return err
+	}
+	go cmd.Wait()
+	return nil
+}
 func (a *App) ChooseFolder() (string, error) {
 	return wailsruntime.OpenDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{Title: "Таталтуудын үндсэн хавтас сонгох"})
 }

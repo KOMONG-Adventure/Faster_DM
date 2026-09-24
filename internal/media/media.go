@@ -169,6 +169,15 @@ func Probe(ctx context.Context, raw string) (Info, error) {
 
 // Download нь pause үед процессоо хааж, resume үед тухайн .part-ийг --continue-гаар үргэлжлүүлнэ.
 func Download(ctx context.Context, raw, destination string, expectedSize int64, control *download.Control, progress func(download.Snapshot)) (int64, error) {
+	return DownloadWithOptions(ctx, raw, destination, expectedSize, control, Options{}, progress)
+}
+
+type Options struct {
+	WorkDir   string
+	RateLimit int64
+}
+
+func DownloadWithOptions(ctx context.Context, raw, destination string, expectedSize int64, control *download.Control, opts Options, progress func(download.Snapshot)) (result int64, returnErr error) {
 	link, err := canonical(raw)
 	if err != nil {
 		return 0, err
@@ -177,11 +186,29 @@ func Download(ctx context.Context, raw, destination string, expectedSize int64, 
 	if err != nil {
 		return 0, err
 	}
-	work, err := os.MkdirTemp(filepath.Dir(destination), ".fasterdm-media-")
+	work := opts.WorkDir
+	if work == "" {
+		work, err = os.MkdirTemp(filepath.Dir(destination), ".fasterdm-media-")
+	} else {
+		err = os.MkdirAll(work, 0700)
+	}
 	if err != nil {
 		return 0, err
 	}
-	defer os.RemoveAll(work)
+	lock, err := os.OpenFile(filepath.Join(work, "session.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return 0, err
+	}
+	if err = download.LockPartial(lock); err != nil {
+		lock.Close()
+		return 0, err
+	}
+	defer func() {
+		lock.Close()
+		if opts.WorkDir == "" || returnErr == nil {
+			os.RemoveAll(work)
+		}
+	}()
 	parts := make(map[string]int64)
 	for {
 		rctx, release, err := control.RequestContext(ctx)
@@ -189,6 +216,9 @@ func Download(ctx context.Context, raw, destination string, expectedSize int64, 
 			return 0, err
 		}
 		args := append(arguments(tools), "--continue", "--newline", "--no-colors", "--progress", "--progress-delta", "0.25", "--progress-template", `download:__FDM__{"format":%(info.format_id)j,"progress":%(progress)j}`, "--output", filepath.Join(work, "media.%(ext)s"), "--", link)
+		if opts.RateLimit > 0 {
+			args = append([]string{"--limit-rate", fmt.Sprint(opts.RateLimit)}, args...)
+		}
 		cmd := exec.CommandContext(rctx, filepath.Join(tools, "yt-dlp.exe"), args...)
 		hideWindow(cmd)
 		cmd.WaitDelay = 3 * time.Second

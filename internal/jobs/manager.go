@@ -28,6 +28,10 @@ type Request struct {
 }
 
 type Job struct {
+	URL            string            `json:"url,omitempty"`
+	Hidden         bool              `json:"hidden,omitempty"`
+	Missing        bool              `json:"missing"`
+	RateLimit      int64             `json:"rateLimit"`
 	Restored       bool              `json:"restored"`
 	ID             string            `json:"id"`
 	Filename       string            `json:"filename"`
@@ -46,6 +50,8 @@ type Job struct {
 
 type entry struct {
 	job            Job
+	running        bool
+	baseElapsed    float64
 	cancel         context.CancelFunc
 	control        *download.Control
 	started        time.Time
@@ -57,20 +63,23 @@ type entry struct {
 	rateAt         time.Time
 }
 type Manager struct {
-	mu         sync.Mutex
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	entries    map[string]*entry
-	sequence   uint64
-	emit       func(Job)
-	closed     bool
-	historyDir string
+	mu          sync.Mutex
+	ctx         context.Context
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
+	entries     map[string]*entry
+	sequence    uint64
+	emit        func(Job)
+	closed      bool
+	historyDir  string
+	settings    Settings
+	persistMu   sync.Mutex
+	historyLock *os.File
 }
 
 func New(ctx context.Context, emit func(Job)) *Manager {
 	ctx, cancel := context.WithCancel(ctx)
-	return &Manager{ctx: ctx, cancel: cancel, entries: make(map[string]*entry), emit: emit}
+	return &Manager{ctx: ctx, cancel: cancel, entries: make(map[string]*entry), emit: emit, settings: Settings{Concurrent: 2, Notifications: true}}
 }
 
 func Category(filename string) string {
@@ -166,16 +175,6 @@ func (m *Manager) Start(req Request) (Job, error) {
 		m.mu.Unlock()
 		return Job{}, errors.New("Апп хаагдаж байна.")
 	}
-	active := 0
-	for _, e := range m.entries {
-		if isActive(e.job.Status) {
-			active++
-		}
-	}
-	if active >= 4 {
-		m.mu.Unlock()
-		return Job{}, errors.New("Зэрэг 4 файл татаж болно. Нэг таталт дууссаны дараа нэмнэ үү.")
-	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		m.mu.Unlock()
 		return Job{}, fmt.Errorf("Хавтас үүсгэх боломжгүй: %w", err)
@@ -199,7 +198,7 @@ func (m *Manager) Start(req Request) (Job, error) {
 		}
 		reserved := false
 		for _, e := range m.entries {
-			if strings.EqualFold(e.job.Path, path) && isActive(e.job.Status) {
+			if strings.EqualFold(e.job.Path, path) && (isActive(e.job.Status) || (!e.job.Hidden && e.job.Status == "failed" && e.job.URL != "")) {
 				reserved = true
 				break
 			}
@@ -210,27 +209,25 @@ func (m *Manager) Start(req Request) (Job, error) {
 	}
 	m.sequence++
 	id := fmt.Sprintf("%d-%s", time.Now().UnixMilli(), rand.Text())
-	ctx, cancel := context.WithCancel(m.ctx)
-	job := Job{ID: id, Filename: name, Path: filepath.Join(dir, name), Category: category, CreatedAt: time.Now().Format(time.RFC3339), Revision: 1, Workers: req.Workers, Status: "probing", Progress: download.Snapshot{Total: -1, Status: "probing", Chunks: []download.ChunkSnapshot{}}}
+	job := Job{ID: id, Filename: name, Path: filepath.Join(dir, name), Category: category, CreatedAt: time.Now().Format(time.RFC3339Nano), Revision: 1, Workers: req.Workers, Status: "queued", Progress: download.Snapshot{Total: -1, Status: "probing", Chunks: []download.ChunkSnapshot{}}}
 	job.SourceKind = sourceKind
+	job.URL = req.URL
 	job.Progress.Total = total
-	control := download.NewControl()
 	job.ETASeconds = -1
-	m.entries[id] = &entry{job: job, cancel: cancel, control: control, started: time.Now(), rateAt: time.Now()}
-	m.wg.Add(1)
-	m.mu.Unlock()
+	m.entries[id] = &entry{job: job}
 	if err := m.persist(job); err != nil {
-		m.mu.Lock()
-		m.entries[id].job.Error = "Түүх хадгалж чадсангүй: " + err.Error()
-		job = m.entries[id].job
+		delete(m.entries, id)
 		m.mu.Unlock()
+		return Job{}, err
 	}
-	go m.run(ctx, job, req.URL, control)
+	m.dispatchLocked()
+	job = m.entries[id].job
+	m.mu.Unlock()
 	return job, nil
 }
 
 func isActive(status string) bool {
-	return status == "probing" || status == "downloading" || status == "canceling" || status == "paused"
+	return status == "queued" || status == "probing" || status == "downloading" || status == "canceling" || status == "paused"
 }
 
 func (m *Manager) update(id string, change func(*Job)) {
@@ -244,7 +241,7 @@ func (m *Manager) update(id string, change func(*Job)) {
 	if !e.pausedAt.IsZero() {
 		elapsed -= now.Sub(e.pausedAt)
 	}
-	e.job.ElapsedSeconds = math.Max(0, elapsed.Seconds())
+	e.job.ElapsedSeconds = e.baseElapsed + math.Max(0, elapsed.Seconds())
 	e.job.ETASeconds = -1
 	if e.job.Status == "downloading" {
 		alpha := 1 - math.Exp(-now.Sub(e.rateAt).Seconds()/2)
@@ -278,15 +275,13 @@ func (m *Manager) update(id string, change func(*Job)) {
 	e.rateAt = now
 	e.job.Revision++
 	job := e.job
-	m.mu.Unlock()
-	if !isActive(job.Status) {
+	if !isActive(job.Status) || job.Status == "paused" {
 		if err := m.persist(job); err != nil {
-			m.mu.Lock()
 			e.job.Error = "Түүх хадгалж чадсангүй: " + err.Error()
 			job = e.job
-			m.mu.Unlock()
 		}
 	}
+	m.mu.Unlock()
 	if m.emit != nil && m.ctx.Err() == nil {
 		m.emit(job)
 	}
@@ -294,23 +289,39 @@ func (m *Manager) update(id string, change func(*Job)) {
 
 func (m *Manager) run(ctx context.Context, job Job, source string, control *download.Control) {
 	defer m.wg.Done()
-	defer func() { m.mu.Lock(); m.entries[job.ID].cancel(); m.mu.Unlock() }()
+	defer func() {
+		m.mu.Lock()
+		e := m.entries[job.ID]
+		e.cancel()
+		e.running = false
+		if e.job.Status == "canceled" {
+			m.removePartial(e.job)
+		}
+		m.dispatchLocked()
+		m.mu.Unlock()
+	}()
+	m.update(job.ID, func(j *Job) {})
 	if job.SourceKind == "youtube" {
-		bytes, err := media.Download(ctx, source, job.Path, job.Progress.Total, control, func(snapshot download.Snapshot) {
+		bytes, err := media.DownloadWithOptions(ctx, source, job.Path, job.Progress.Total, control, media.Options{WorkDir: m.mediaPath(job), RateLimit: job.RateLimit}, func(snapshot download.Snapshot) {
 			m.update(job.ID, func(j *Job) {
 				j.Progress = snapshot
-				if j.Status != "paused" && j.Status != "canceling" {
+				if j.Status != "paused" && j.Status != "canceling" && j.Status != "queued" {
 					j.Status = "downloading"
 				}
 			})
 		})
 		m.update(job.ID, func(j *Job) {
+			previous := j.Status
 			if err != nil {
 				j.Status = "failed"
 				j.Error = err.Error()
 				if ctx.Err() != nil {
 					j.Status = "canceled"
 					j.Error = "Таталтыг цуцалсан."
+					if (m.ctx.Err() != nil && previous != "canceling") || previous == "paused" {
+						j.Status = "paused"
+						j.Error = ""
+					}
 				}
 			} else {
 				j.Status = "complete"
@@ -329,6 +340,11 @@ func (m *Manager) run(ctx context.Context, job Job, source string, control *down
 		cfg.MinChunkSize = 4 << 20
 	}
 	cfg.Control = control
+	cfg.ResumePath = m.partialPath(job)
+	if job.RateLimit > 0 {
+		cfg.Limiter = &download.Limiter{BytesPerSecond: job.RateLimit}
+		cfg.BufferSize = 32 << 10
+	}
 	engine, err := download.New(cfg)
 	if err != nil {
 		m.update(job.ID, func(j *Job) { j.Status = "failed"; j.Error = err.Error() })
@@ -342,7 +358,7 @@ func (m *Manager) run(ctx context.Context, job Job, source string, control *down
 		for snapshot := range updates {
 			m.update(job.ID, func(j *Job) {
 				j.Progress = snapshot
-				if j.Status != "canceling" && j.Status != "paused" {
+				if j.Status != "canceling" && j.Status != "paused" && j.Status != "queued" {
 					j.Status = "downloading"
 				}
 			})
@@ -353,12 +369,17 @@ func (m *Manager) run(ctx context.Context, job Job, source string, control *down
 	<-drained
 	m.update(job.ID, func(j *Job) {
 		j.Progress.BytesPerSecond = 0
+		previous := j.Status
 		if err != nil {
 			j.Status = "failed"
 			j.Error = err.Error()
 			if ctx.Err() != nil {
 				j.Status = "canceled"
 				j.Error = "Таталтыг цуцалсан."
+				if (m.ctx.Err() != nil && previous != "canceling") || previous == "paused" {
+					j.Status = "paused"
+					j.Error = ""
+				}
 			}
 		} else {
 			j.Status = "complete"
@@ -381,6 +402,13 @@ func (m *Manager) List() []Job {
 	result := make([]Job, 0, len(m.entries))
 	for _, e := range m.entries {
 		job := e.job
+		if job.Hidden {
+			continue
+		}
+		if job.Status == "complete" {
+			_, err := os.Stat(job.Path)
+			job.Missing = errors.Is(err, os.ErrNotExist)
+		}
 		job.Progress.Chunks = append([]download.ChunkSnapshot{}, job.Progress.Chunks...)
 		result = append(result, job)
 	}
@@ -406,72 +434,24 @@ func (m *Manager) Get(id string) (Job, error) {
 	return Job{}, errors.New("Таталт олдсонгүй.")
 }
 
-func (m *Manager) Cancel(id string) error {
-	m.mu.Lock()
-	e, ok := m.entries[id]
-	if !ok {
-		m.mu.Unlock()
-		return errors.New("Таталт олдсонгүй.")
-	}
-	if !isActive(e.job.Status) {
-		m.mu.Unlock()
-		return nil
-	}
-	e.job.Status = "canceling"
-	e.job.Revision++
-	job := e.job
-	e.cancel()
-	m.mu.Unlock()
-	if m.emit != nil && m.ctx.Err() == nil {
-		m.emit(job)
-	}
-	return nil
-}
-
-func (m *Manager) Pause(id string) error  { return m.setPaused(id, true) }
-func (m *Manager) Resume(id string) error { return m.setPaused(id, false) }
-func (m *Manager) setPaused(id string, paused bool) error {
-	m.mu.Lock()
-	e, ok := m.entries[id]
-	if !ok {
-		m.mu.Unlock()
-		return errors.New("Таталт олдсонгүй.")
-	}
-	if !isActive(e.job.Status) || e.job.Status == "canceling" {
-		m.mu.Unlock()
-		return nil
-	}
-	now := time.Now()
-	if paused && e.job.Status != "paused" {
-		e.pausedAt = now
-		e.job.Status = "paused"
-		e.control.Pause()
-	} else if !paused && e.job.Status == "paused" {
-		e.pausedDuration += now.Sub(e.pausedAt)
-		e.pausedAt = time.Time{}
-		e.job.Status = "downloading"
-		e.control.Resume()
-	}
-	e.speed = 0
-	e.networkSpeed, e.diskSpeed = 0, 0
-	e.rateAt = now
-	e.job.Progress.BytesPerSecond = 0
-	e.job.Progress.NetworkBytesPerSecond, e.job.Progress.DiskBytesPerSecond = 0, 0
-	e.job.Progress.ActiveConnections = 0
-	e.job.ETASeconds = -1
-	e.job.Revision++
-	job := e.job
-	m.mu.Unlock()
-	if m.emit != nil && m.ctx.Err() == nil {
-		m.emit(job)
-	}
-	return nil
-}
-
 func (m *Manager) Close() {
 	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		m.wg.Wait()
+		return
+	}
 	m.closed = true
 	m.cancel()
+	for _, e := range m.entries {
+		if !e.running && isActive(e.job.Status) {
+			e.job.Status = "paused"
+			_ = m.persist(e.job)
+		}
+	}
 	m.mu.Unlock()
 	m.wg.Wait()
+	if m.historyLock != nil {
+		m.historyLock.Close()
+	}
 }

@@ -55,7 +55,7 @@ func (e *Engine) Close() { e.client.CloseIdleConnections() }
 // Download нь блоклодог тул Wails bridge үүнийг тусдаа goroutine-оос дуудна.
 // updates нь сонголттой, илгээх ажиллагаа блоклохгүй; хэрэглэгч Download буцтал хааж болохгүй.
 // Эцсийн үр дүнг Result/error-оос авна: дүүрсэн channel-ийн snapshot алгасагдаж болно.
-// Байгаа destination-ийг хэзээ ч дарж бичихгүй. Алдаатай .part файлыг цэвэрлэнэ.
+// Байгаа destination-ийг дарж бичихгүй. ResumePath өгсөн бол дутуу файлыг хадгална.
 func (e *Engine) Download(ctx context.Context, rawURL, destination string, updates chan<- Snapshot) (result Result, returnErr error) {
 	started := time.Now()
 	u, err := url.Parse(rawURL)
@@ -78,13 +78,30 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 	if err != nil {
 		return result, fmt.Errorf("сервер шалгах: %w", err)
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".fasterdm-*.part")
+	var f *os.File
+	if e.cfg.ResumePath != "" {
+		f, err = os.OpenFile(e.cfg.ResumePath, os.O_CREATE|os.O_RDWR, 0600)
+	} else {
+		f, err = os.CreateTemp(filepath.Dir(path), ".fasterdm-*.part")
+	}
 	if err != nil {
 		return result, fmt.Errorf("түр файл үүсгэх: %w", err)
 	}
-	defer func() { f.Close(); os.Remove(f.Name()) }()
+	if err = LockPartial(f); err != nil {
+		f.Close()
+		return result, fmt.Errorf("өөр апп энэ таталтыг ашиглаж байна: %w", err)
+	}
+	defer func() {
+		f.Close()
+		if e.cfg.ResumePath == "" || returnErr == nil {
+			os.Remove(f.Name())
+			if e.cfg.ResumePath != "" {
+				os.Remove(e.cfg.ResumePath + ".json")
+			}
+		}
+	}()
 	// Windows/Linux дээр disk allocation-ийг таталт эхлэхээс өмнө нөөцөлнө.
-	if meta.parallel || meta.size == 0 {
+	if e.cfg.ResumePath == "" && (meta.parallel || meta.size == 0) {
 		if err := allocate(f, meta.size); err != nil {
 			return result, fmt.Errorf("дискний зай нөөцлөх: %w", err)
 		}
@@ -101,7 +118,28 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 		workers = 1
 	}
 	s.setLimit(workers)
+	if e.cfg.ResumePath != "" {
+		restored, restoreErr := restoreCheckpoint(e.cfg.ResumePath+".json", rawURL, meta, f, s)
+		if restoreErr != nil {
+			return result, restoreErr
+		}
+		if !restored && (meta.parallel || meta.size == 0) {
+			if err = allocate(f, meta.size); err != nil {
+				return result, err
+			}
+		}
+		if meta.parallel {
+			if err = saveCheckpoint(e.cfg.ResumePath+".json", rawURL, meta, f, s); err != nil {
+				return result, err
+			}
+		}
+	}
 	stop, stopped := make(chan struct{}), make(chan struct{})
+	ctx, cancelWork := context.WithCancel(ctx)
+	defer cancelWork()
+	var checkpointErr error
+	var stopOnce sync.Once
+	closeCheckpoint := func() { stopOnce.Do(func() { close(stop); <-stopped }) }
 	emit := func(status string) {
 		if updates != nil {
 			snapshot := s.snapshot(status)
@@ -114,6 +152,8 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 	go func() {
 		defer close(stopped)
 		ticker := time.NewTicker(e.cfg.ProgressInterval)
+		checkpointTimer := time.NewTicker(5 * time.Second)
+		defer checkpointTimer.Stop()
 		defer ticker.Stop()
 		for {
 			select {
@@ -121,12 +161,18 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 				return
 			case <-ticker.C:
 				emit("downloading")
+			case <-checkpointTimer.C:
+				if e.cfg.ResumePath != "" && meta.parallel {
+					checkpointErr = saveCheckpoint(e.cfg.ResumePath+".json", rawURL, meta, f, s)
+					if checkpointErr != nil {
+						cancelWork()
+					}
+				}
 			}
 		}
 	}()
 	defer func() {
-		close(stop)
-		<-stopped
+		closeCheckpoint()
 		status := "complete"
 		if returnErr != nil {
 			status = "failed"
@@ -149,7 +195,20 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 		err = e.sequential(ctx, rawURL, f, s)
 	}
 	if err != nil {
+		closeCheckpoint()
+		if e.cfg.ResumePath != "" && meta.parallel {
+			if saveErr := saveCheckpoint(e.cfg.ResumePath+".json", rawURL, meta, f, s); saveErr != nil {
+				return result, saveErr
+			}
+		}
+		if checkpointErr != nil {
+			return result, checkpointErr
+		}
 		return result, err
+	}
+	closeCheckpoint()
+	if checkpointErr != nil {
+		return result, checkpointErr
 	}
 	if err := ctx.Err(); err != nil {
 		return result, err
@@ -282,6 +341,10 @@ func (e *Engine) rangeOnce(ctx context.Context, url string, meta metadata, f *os
 			return nil
 		}
 		n, readErr := io.ReadFull(r.Body, buf[:capacity])
+		if err := e.limit(ctx, r.Body, n); err != nil {
+			s.advance(c, 0)
+			return err
+		}
 		s.receivedBytes(n)
 		if n > 0 {
 			written, writeErr := f.WriteAt(buf[:n], offset)
@@ -361,6 +424,9 @@ func (e *Engine) sequentialOnce(ctx context.Context, url string, f *os.File, s *
 			return err
 		}
 		n, readErr := r.Body.Read(buf)
+		if err := e.limit(ctx, r.Body, n); err != nil {
+			return err
+		}
 		s.receivedBytes(n)
 		if n > 0 {
 			if r.ContentLength >= 0 && int64(n) > r.ContentLength-offset {

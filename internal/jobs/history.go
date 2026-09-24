@@ -23,6 +23,19 @@ func NewPersistent(ctx context.Context, emit func(Job), dir string) (*Manager, e
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return m, err
 	}
+	lock, err := os.OpenFile(filepath.Join(dir, ".session.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err == nil {
+		err = download.LockPartial(lock)
+	}
+	if err != nil {
+		if lock != nil {
+			lock.Close()
+		}
+		m.closed = true
+		m.cancel()
+		return m, fmt.Errorf("Түүхийг түгжиж чадсангүй. Faster DM өөр цонхонд нээлттэй эсэхийг шалгана уу: %w", err)
+	}
+	m.historyLock = lock
 	m.historyDir = dir
 	files, err := os.ReadDir(dir)
 	if err != nil {
@@ -30,7 +43,7 @@ func NewPersistent(ctx context.Context, emit func(Job), dir string) (*Manager, e
 	}
 	var problems []error
 	for _, file := range files {
-		if file.IsDir() || filepath.Ext(file.Name()) != ".json" {
+		if file.Name() == "settings.json" || file.IsDir() || filepath.Ext(file.Name()) != ".json" {
 			continue
 		}
 		path := filepath.Join(dir, file.Name())
@@ -46,6 +59,10 @@ func NewPersistent(ctx context.Context, emit func(Job), dir string) (*Manager, e
 		if isActive(job.Status) {
 			job.Status = "failed"
 			job.Error = "Апп хаагдсан тул таталт тасарсан. Холбоосоор дахин эхлүүлнэ үү."
+			if job.URL != "" {
+				job.Status = "paused"
+				job.Error = ""
+			}
 		}
 		job.Restored = true
 		job.Revision++
@@ -60,6 +77,9 @@ func NewPersistent(ctx context.Context, emit func(Job), dir string) (*Manager, e
 			job.ETASeconds = 0
 		}
 		m.entries[job.ID] = &entry{job: job}
+	}
+	if err := m.loadSettings(); err != nil {
+		problems = append(problems, err)
 	}
 	return m, errors.Join(problems...)
 }
@@ -88,6 +108,8 @@ func readHistory(path string) (Job, error) {
 // Нэг таталт нэг файл: зэрэг нээлттэй аппуудын түүх бие биеэ дарахгүй.
 // Progress frame бүрийг биш, эхлэл ба эцсийн төлөвийг хадгална.
 func (m *Manager) persist(job Job) error {
+	m.persistMu.Lock()
+	defer m.persistMu.Unlock()
 	if m.historyDir == "" {
 		return nil
 	}
@@ -126,9 +148,12 @@ func (m *Manager) ImportCompleted(folder string) error {
 		return nil
 	}
 	known := make(map[string]bool)
-	for _, job := range m.List() {
+	m.mu.Lock()
+	for _, e := range m.entries {
+		job := e.job
 		known[strings.ToLower(filepath.Clean(job.Path))] = true
 	}
+	m.mu.Unlock()
 	var problems []error
 	for _, category := range []string{"Videos", "Photos", "Archives", "Audio", "Documents", "Other"} {
 		dir := filepath.Join(folder, category)

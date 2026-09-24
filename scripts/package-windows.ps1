@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.4.2',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.5.0',
     [switch]$ReuseMedia
 )
 $ErrorActionPreference = 'Stop'

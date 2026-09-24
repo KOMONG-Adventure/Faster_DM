@@ -2,6 +2,8 @@
 
 ## Dashboard ба Windows tray
 
+- go-toast/v2 2.0.3 — Unlicense OR MIT, https://git.sr.ht/~jackmordaunt/go-toast
+  Windows мэдэгдэл. Лиценз: `licenses/go-toast-LICENSE.txt`.
 - Driver.js 1.3.6 — MIT, https://github.com/kamranahmedse/driver.js
   Лиценз: `licenses/driverjs-LICENSE.txt`.
 - energye/systray 1.0.3 — Apache-2.0, https://github.com/energye/systray

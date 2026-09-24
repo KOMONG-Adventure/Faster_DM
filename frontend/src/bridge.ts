@@ -1,6 +1,10 @@
-import type { Job, Request, State } from './types';
+import type { Job, Request, State, Settings } from './types';
 
 interface API {
+ SetDownloadSettings(settings: Settings): Promise<void>;
+ RemoveHistory(id: string): Promise<void>;
+ RetryDownload(id: string): Promise<Job>;
+ OpenFile(id: string): Promise<void>;
 	ClipboardDownloadURL(): Promise<string>;
 	MinimiseToTray(): Promise<void>;
   GetAppVersion(): Promise<string>;
