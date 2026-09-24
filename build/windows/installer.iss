@@ -48,7 +48,8 @@ Name: "{group}\Faster DM"; Filename: "{app}\FasterDM.exe"
 Name: "{autodesktop}\Faster DM"; Filename: "{app}\FasterDM.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\FasterDM.exe"; Description: "Faster DM нээх"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\FasterDM.exe"; Description: "Faster DM нээх"; Flags: nowait postinstall skipifsilent; Check: not IsAppUpdate
+Filename: "{app}\FasterDM.exe"; Flags: nowait; Check: IsAppUpdate
 
 [Messages]
 SetupWindowTitle=Faster DM суулгах
@@ -67,12 +68,33 @@ function CreateFile(FileName: String; Access, Share, Security, Creation, Flags, 
   external 'CreateFileW@kernel32.dll stdcall';
 function CloseHandle(Handle: LongWord): Boolean;
   external 'CloseHandle@kernel32.dll stdcall';
+function OpenProcess(Access: LongWord; Inherit: Boolean; ProcessId: LongWord): LongWord;
+  external 'OpenProcess@kernel32.dll stdcall';
+function WaitForSingleObject(Handle, Milliseconds: LongWord): LongWord;
+  external 'WaitForSingleObject@kernel32.dll stdcall';
+
+function IsAppUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:UPDATEPID|}') <> '';
+end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Handle: LongWord;
+  ProcessId: Integer;
+  WaitResult: LongWord;
 begin
   Result := '';
+  if IsAppUpdate then begin
+    ProcessId := StrToIntDef(ExpandConstant('{param:UPDATEPID|0}'), 0);
+    if ProcessId <= 0 then begin Result := 'Аппын процессын дугаар буруу байна.'; Exit; end;
+    Handle := OpenProcess($00100000, False, ProcessId);
+    if Handle <> 0 then begin
+      WaitResult := WaitForSingleObject(Handle, 60000);
+      CloseHandle(Handle);
+      if WaitResult <> 0 then begin Result := 'Апп хаагдаж дуусаагүй байна. Дараа дахин шинэчилнэ үү.'; Exit; end;
+    end;
+  end;
   if FileExists(ExpandConstant('{app}\FasterDM.exe')) then begin
     Handle := CreateFile(ExpandConstant('{app}\FasterDM.exe'), $40000000, 0, 0, 3, 0, 0);
     if Handle = $FFFFFFFF then

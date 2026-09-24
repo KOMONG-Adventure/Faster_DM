@@ -14,7 +14,7 @@ import (
 )
 
 // Release build-д -ldflags "-X .../internal/updates.Version=0.2.0" ашиглаж өөрчилнө.
-var Version = "0.3.1"
+var Version = "0.4.0"
 
 const ReleasesURL = "https://github.com/KOMONG-Adventure/Faster_DM/releases"
 const LatestAPI = "https://api.github.com/repos/KOMONG-Adventure/Faster_DM/releases/latest"
@@ -111,7 +111,7 @@ func check(ctx context.Context, client *http.Client, endpoint, current string) R
 	for i := range local {
 		if remote[i] > local[i] {
 			r.Status = "available"
-			r.Message = "Шинэ хувилбар бэлэн байна. GitHub Releases хуудсаас татаж аваарай."
+			r.Message = "Шинэ хувилбар бэлэн байна. Татаж суулгах товчийг дарна уу. Суулгах үед апп хаагдаж, дараа нь дахин нээгдэнэ."
 			break
 		}
 		if remote[i] < local[i] {

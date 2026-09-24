@@ -184,7 +184,7 @@ snapshot дамжина; сүлжээний buffer, file handle дамжихгү
 | Style | `tailwindcss`, `@tailwindcss/vite` | Хэрэгжсэн |
 | Animation | `framer-motion` | Хэрэгжсэн, reduced-motion дэмжинэ |
 | Frontend build | `vite`, `@vitejs/plugin-react`, `typescript`, `@types/react@18`, `@types/react-dom@18` | Lockfile-д түгжсэн |
-| OTA | `github.com/creativeprojects/go-selfupdate` эсвэл шалгасан native updater | 3-р алхамд сонгож түгжих |
+| Шинэчлэлт | Go HTTP + SHA-256 + Inno Setup process handoff | Апп дотроос татаж суулгана |
 
 Go хамаарлууд `go.mod/go.sum`, UI хамаарлууд `frontend/package-lock.json`-д түгжигдсэн.
 Wails v2 хөгжүүлэлтийн үед платформын build dependencies шаардлагатай;
@@ -376,14 +376,20 @@ go test -race ./internal/... ./cmd/...
 
 Sidebar-ийн **Шинэчлэлт шалгах** товч GitHub Releases-ийн хамгийн сүүлийн
 тогтвортой хувилбарыг шалгаж, одоогийн хувилбар болон шалгасан цагийг харуулна.
-Шинэ хувилбарыг **GitHub Releases** товчоор нээж татна. Зөвхөн git push хийх нь
-release нийтлэхгүй. Нийтэд нээлттэй release байхгүй бол үүнийг тусад нь мэдэгдэнэ.
-Энэ товч EXE-г автоматаар солихгүй. Release build-ийн хувилбарыг
-`-ldflags "-X github.com/KOMONG-Adventure/Faster_DM/internal/updates.Version=0.3.0"`
+Шинэ хувилбарыг **Татаж суулгах** товчоор апп дотроос татна. Installer-ийн SHA-256
+утгыг тухайн release-ийн manifest-тай тулгаж байж ажиллуулна. Таталтын явцыг
+харуулна; тасарсан эсвэл checksum зөрсөн файлыг суулгахгүй. Идэвхтэй, түр зогссон
+таталт байвал шинэчлэл эхлэхгүй. Татаж дуусахад апп хаагдаж, installer тухайн PID
+гарсныг хүлээгээд шинэ файлуудыг суулган, аппыг дахин нээнэ. Windows x64-д дэмжинэ.
+Суулгалтын log нь `%LOCALAPPDATA%\FasterDM\updates\install-*\install.log` дотор байна.
+Portable аппыг энэ аргаар шинэчлэхэд стандарт `%LOCALAPPDATA%\Programs\FasterDM`
+байрлалд суулгана; хуучин portable EXE-г өөрчлөхгүй. Дараа нь Start Menu-ээс нээнэ.
+Зөвхөн git push хийх нь release нийтлэхгүй. Нийтэд нээлттэй release шаардлагатай.
+Release build-ийн хувилбарыг
+`-ldflags "-X github.com/KOMONG-Adventure/Faster_DM/internal/updates.Version=0.4.0"`
 аргаар тохируулна.
 
-3. GitHub Releases updater: хувилбар/OS/архитектур шалгалт, баталгаажуулсан artifact,
-   rollback болон graceful restart. Windows дээр ажиллаж буй `.exe`-г шууд дарж
-   бичихэд найдахгүй; process гарсны дараа солих туслах процесс хэрэгтэй.
-4–5-р алхмын dashboard болон Wails bindings хэрэгжсэн. OTA updater болон
-итгэмжлэгдсэн code signing одоогоор ороогүй.
+v0.4.0-өөс өмнөх аппад хуучин товч хэвээр тул энэ хувилбарыг эхлээд нэг удаа
+installer-аар суулгана. Дараагийн хувилбаруудаас шууд суулгах товчийг ашиглана.
+Автомат rollback, background scheduled update, code signing хараахан ороогүй.
+SHA-256 нь таталтын бүрэн бүтэн байдлыг шалгана; code-signing гэрчилгээ биш.

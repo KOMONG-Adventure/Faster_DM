@@ -19,17 +19,21 @@ import (
 )
 
 type App struct {
-	ctx           context.Context
-	manager       *jobs.Manager
-	trayReady     atomic.Bool
-	closing       atomic.Bool
-	trayOnce      sync.Once
-	trayLifecycle sync.Mutex
-	trayCancel    context.CancelFunc
-	trayWG        sync.WaitGroup
-	windowMu      sync.Mutex
-	windowHidden  bool
-	restoreUntil  time.Time
+	ctx            context.Context
+	manager        *jobs.Manager
+	trayReady      atomic.Bool
+	closing        atomic.Bool
+	trayOnce       sync.Once
+	trayLifecycle  sync.Mutex
+	trayCancel     context.CancelFunc
+	trayWG         sync.WaitGroup
+	windowMu       sync.Mutex
+	windowHidden   bool
+	restoreUntil   time.Time
+	actionMu       sync.Mutex
+	updating       bool
+	updateMu       sync.Mutex
+	updateProgress updates.Progress
 }
 type State struct {
 	Jobs   []jobs.Job `json:"jobs"`
@@ -39,7 +43,61 @@ type State struct {
 func NewApp() *App                             { return &App{} }
 func (a *App) GetAppVersion() string           { return updates.Version }
 func (a *App) CheckForUpdates() updates.Result { return updates.Check(a.ctx) }
-func (a *App) OpenReleases()                   { wailsruntime.BrowserOpenURL(a.ctx, updates.ReleasesURL) }
+func (a *App) GetUpdateProgress() updates.Progress {
+	a.updateMu.Lock()
+	defer a.updateMu.Unlock()
+	return a.updateProgress
+}
+func (a *App) setUpdateProgress(p updates.Progress) {
+	a.updateMu.Lock()
+	a.updateProgress = p
+	a.updateMu.Unlock()
+}
+func (a *App) InstallUpdate(expectedTag string) (err error) {
+	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+		return errors.New("Шууд суулгах нь Windows x64 хувилбарт дэмжигдэнэ.")
+	}
+	a.actionMu.Lock()
+	if a.updating {
+		a.actionMu.Unlock()
+		return errors.New("Шинэчлэлт аль хэдийн эхэлсэн.")
+	}
+	for _, job := range a.manager.List() {
+		if job.Status == "probing" || job.Status == "downloading" || job.Status == "paused" || job.Status == "canceling" {
+			a.actionMu.Unlock()
+			return errors.New("Эхлээд идэвхтэй болон түр зогсоосон таталтаа дуусгах эсвэл цуцална уу. Шинэчлэлт аппыг дахин нээнэ.")
+		}
+	}
+	a.updating = true
+	a.actionMu.Unlock()
+	defer func() {
+		if err != nil {
+			a.actionMu.Lock()
+			a.updating = false
+			a.actionMu.Unlock()
+			a.setUpdateProgress(updates.Progress{Phase: "error"})
+		}
+	}()
+	a.setUpdateProgress(updates.Progress{Phase: "checking"})
+	release := updates.Check(a.ctx)
+	if release.Status != "available" {
+		return errors.New(release.Message)
+	}
+	if release.Latest != expectedTag {
+		return errors.New("Шинэ release гарсан байна. Дахин шалгаад суулгана уу.")
+	}
+	path, err := updates.DownloadInstaller(a.ctx, release.Latest, a.setUpdateProgress)
+	if err != nil {
+		return err
+	}
+	a.setUpdateProgress(updates.Progress{Phase: "installing"})
+	if err = launchUpdateInstaller(path); err != nil {
+		return err
+	}
+	// Installer энэ PID гарсны дараа файлуудыг солино. Идэвхтэй таталт байхгүй.
+	wailsruntime.Quit(a.ctx)
+	return nil
+}
 
 // Clipboard-ийн ердийн текстийг frontend рүү дамжуулахгүй, зөвхөн HTTP(S) URL авна.
 // Холбоосыг шалгах гэж сүлжээний хүсэлт илгээхгүй.
@@ -98,11 +156,18 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	answer, err := wailsruntime.MessageDialog(ctx, wailsruntime.MessageDialogOptions{Type: wailsruntime.QuestionDialog, Title: "Таталт үргэлжилж байна", Message: "Аппыг хаавал идэвхтэй таталтууд цуцлагдана. Хаах уу?", Buttons: []string{"Yes", "No"}, DefaultButton: "No", CancelButton: "No"})
 	return err != nil || answer != "Yes"
 }
-func (a *App) GetState() State                                  { return State{Jobs: a.manager.List(), Folder: jobs.DefaultFolder()} }
-func (a *App) StartDownload(req jobs.Request) (jobs.Job, error) { return a.manager.Start(req) }
-func (a *App) CancelDownload(id string) error                   { return a.manager.Cancel(id) }
-func (a *App) PauseDownload(id string) error                    { return a.manager.Pause(id) }
-func (a *App) ResumeDownload(id string) error                   { return a.manager.Resume(id) }
+func (a *App) GetState() State { return State{Jobs: a.manager.List(), Folder: jobs.DefaultFolder()} }
+func (a *App) StartDownload(req jobs.Request) (jobs.Job, error) {
+	a.actionMu.Lock()
+	defer a.actionMu.Unlock()
+	if a.updating {
+		return jobs.Job{}, errors.New("Шинэчлэлт суулгаж байна. Дууссаны дараа таталт эхлүүлнэ үү.")
+	}
+	return a.manager.Start(req)
+}
+func (a *App) CancelDownload(id string) error { return a.manager.Cancel(id) }
+func (a *App) PauseDownload(id string) error  { return a.manager.Pause(id) }
+func (a *App) ResumeDownload(id string) error { return a.manager.Resume(id) }
 func (a *App) ChooseFolder() (string, error) {
 	return wailsruntime.OpenDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{Title: "Таталтуудын үндсэн хавтас сонгох"})
 }
