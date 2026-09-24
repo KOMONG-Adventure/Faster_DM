@@ -41,6 +41,7 @@ Name: desktopicon; Description: "Desktop дээр товчлол үүсгэх"; 
 Source: "{#PackageDir}\FasterDM.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PackageDir}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PackageDir}\THIRD_PARTY.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PackageDir}\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Faster DM"; Filename: "{app}\FasterDM.exe"

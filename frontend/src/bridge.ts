@@ -1,6 +1,7 @@
 import type { Job, Request, State } from './types';
 
 interface API {
+	MinimiseToTray(): Promise<void>;
   GetAppVersion(): Promise<string>;
   CheckForUpdates(): Promise<UpdateResult>;
   OpenReleases(): Promise<void>;

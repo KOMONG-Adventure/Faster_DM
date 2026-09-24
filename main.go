@@ -21,7 +21,8 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 246, G: 248, B: 250, A: 255},
 		AssetServer:      &assetserver.Options{Assets: assets},
 		OnStartup:        app.startup, OnShutdown: app.shutdown, OnBeforeClose: app.beforeClose,
-		Bind: []interface{}{app},
+		OnDomReady: app.startTray,
+		Bind:       []interface{}{app},
 	})
 	if err != nil {
 		// GUI build-д console байхгүй тул startup алдааг хэрэглэгчийн хавтсанд хадгална.

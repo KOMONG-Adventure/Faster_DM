@@ -7,9 +7,21 @@
 
 ## Шууд ашиглах
 
+### Анхны танилцуулга ба Tray
+
+- Аппын анхны нээлтэд Монгол хэлтэй Driver.js танилцуулга автоматаар гарна.
+  Дуусгах/алгасах сонголтыг тухайн WebView profile-ийн localStorage-д хадгална.
+  **Танилцуулга** товчоор хэдийд ч дахин үзэж болно.
+- **Суга Баяаа** нь хурааж болдог найзуудын наргианы булан; таталт өөрчлөхгүй.
+- Windows дээр **Tray-д хураах** эсвэл цонхны **−** товчоор цагийн хажуугийн
+  tray-д хураана. Таталт ард үргэлжилнэ. Icon дээр дарж дахин нээнэ; далд icon-ууд
+  **∧** цэсэнд байж болно. Баруун товч → **Аппаас гарах** нь бүрэн хаана.
+- Цонхны **×** нь өмнөх шиг аппыг хаана; идэвхтэй таталт байвал баталгаажуулна.
+  Tray бэлэн биш үед цонхыг далдлахгүй. Windows бус системд tray дэмжлэг ороогүй.
+
 ### Installer-аар бусдад тараах
 
-`FasterDM-Setup-0.2.0-x64.exe` нэг файлыг дамжуулахад хангалттай. Апп, YouTube
+`FasterDM-Setup-0.3.0-x64.exe` нэг файлыг дамжуулахад хангалттай. Апп, YouTube
 хэрэгслүүд, лицензүүд бүгд багтана. Windows 10/11 x64 дээр administrator эрхгүйгээр
 `%LOCALAPPDATA%\Programs\FasterDM` дотор суулгана. Start Menu shortcut үүсгэнэ;
 Desktop shortcut сонголттой. Windows Settings → Apps-аас устгаж болно.
@@ -34,7 +46,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1 -Silent
 ```
 
 Скрипт хамгийн сүүлийн stable release installer татаж, SHA-256 шалгаад суулгана.
-Go/Node build хэрэгслүүд эцсийн хэрэглэгчид шаардлагагүй. `-Version 0.2.0`-оор
+Go/Node build хэрэгслүүд эцсийн хэрэглэгчид шаардлагагүй. `-Version 0.3.0`-оор
 тодорхой хувилбар сонгож болно. Private release татахдаа репозиторт унших эрхтэй
 `GH_TOKEN` эсвэл `GITHUB_TOKEN` environment variable шаардлагатай; token-оо Git-д
 хадгалж болохгүй. ExecutionPolicy нь зөвхөн тухайн PowerShell процесст үйлчилнэ.
@@ -42,13 +54,13 @@ Go/Node build хэрэгслүүд эцсийн хэрэглэгчид шаар�
 ### Installer build ба Release
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.ps1 -Version 0.2.0
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.ps1 -Version 0.3.0
 ```
 
-Үр дүн `dist/0.2.0/`: installer, `install.ps1`, `SHA256SUMS.txt`.
+Үр дүн `dist/0.3.0/`: installer, `install.ps1`, `SHA256SUMS.txt`.
 Inno Setup compiler-ийг албан ёсны URL, түгжсэн SHA-256-аар авч хэрэглэнэ.
 GitHub Actions → **Windows installer release** → **Run workflow** эсвэл
-`v0.2.1` зэрэг version tag push хийхэд installer build хийж Release-д байрлуулна.
+`v0.3.1` зэрэг version tag push хийхэд installer build хийж Release-д байрлуулна.
 Release version-ийг аппын update checker болон installer-д ижил оруулна.
 
 ### Portable апп ашиглах
@@ -356,7 +368,7 @@ Sidebar-ийн **Шинэчлэлт шалгах** товч GitHub Releases-ий
 Шинэ хувилбарыг **GitHub Releases** товчоор нээж татна. Зөвхөн git push хийх нь
 release нийтлэхгүй. Нийтэд нээлттэй release байхгүй бол үүнийг тусад нь мэдэгдэнэ.
 Энэ товч EXE-г автоматаар солихгүй. Release build-ийн хувилбарыг
-`-ldflags "-X github.com/KOMONG-Adventure/Faster_DM/internal/updates.Version=0.2.0"`
+`-ldflags "-X github.com/KOMONG-Adventure/Faster_DM/internal/updates.Version=0.3.0"`
 аргаар тохируулна.
 
 3. GitHub Releases updater: хувилбар/OS/архитектур шалгалт, баталгаажуулсан artifact,

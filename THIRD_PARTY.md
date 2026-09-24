@@ -1,5 +1,14 @@
 # YouTube таталтын туслах хэрэгслүүд
 
+## Dashboard ба Windows tray
+
+- Driver.js 1.3.6 — MIT, https://github.com/kamranahmedse/driver.js
+  Лиценз: `licenses/driverjs-LICENSE.txt`.
+- energye/systray 1.0.3 — Apache-2.0, https://github.com/energye/systray
+  Лиценз: `licenses/systray-LICENSE.txt`.
+
+## Media хэрэгслүүд
+
 Faster DM нь эдгээр тусдаа програмыг командын аргументаар ажиллуулна.
 Энгийн HTTP таталт Go engine-ээр хийгдэх бөгөөд эдгээр хэрэгсэл шаардлагагүй.
 

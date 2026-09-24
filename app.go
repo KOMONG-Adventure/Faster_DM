@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/KOMONG-Adventure/Faster_DM/internal/jobs"
 	"github.com/KOMONG-Adventure/Faster_DM/internal/updates"
@@ -12,8 +16,17 @@ import (
 )
 
 type App struct {
-	ctx     context.Context
-	manager *jobs.Manager
+	ctx           context.Context
+	manager       *jobs.Manager
+	trayReady     atomic.Bool
+	closing       atomic.Bool
+	trayOnce      sync.Once
+	trayLifecycle sync.Mutex
+	trayCancel    context.CancelFunc
+	trayWG        sync.WaitGroup
+	windowMu      sync.Mutex
+	windowHidden  bool
+	restoreUntil  time.Time
 }
 type State struct {
 	Jobs   []jobs.Job `json:"jobs"`
@@ -28,7 +41,28 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.manager = jobs.New(ctx, func(job jobs.Job) { wailsruntime.EventsEmit(ctx, "download:changed", job) })
 }
-func (a *App) shutdown(context.Context) { a.manager.Close() }
+func (a *App) shutdown(context.Context) { a.closing.Store(true); a.stopTray(); a.manager.Close() }
+func (a *App) MinimiseToTray() error {
+	if !a.trayReady.Load() {
+		return errors.New("Tray хараахан бэлэн болоогүй байна. Цонхны − товчийг ашиглана уу.")
+	}
+	a.windowMu.Lock()
+	defer a.windowMu.Unlock()
+	wailsruntime.WindowHide(a.ctx)
+	a.windowHidden = true
+	return nil
+}
+func (a *App) showFromTray() {
+	if a.ctx == nil || a.closing.Load() {
+		return
+	}
+	a.windowMu.Lock()
+	defer a.windowMu.Unlock()
+	a.restoreUntil = time.Now().Add(time.Second)
+	wailsruntime.WindowUnminimise(a.ctx)
+	wailsruntime.WindowShow(a.ctx)
+	a.windowHidden = false
+}
 func (a *App) beforeClose(ctx context.Context) bool {
 	active := false
 	for _, j := range a.manager.List() {

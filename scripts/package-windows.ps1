@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.2.0',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.3.0',
     [switch]$ReuseMedia
 )
 $ErrorActionPreference = 'Stop'
@@ -25,6 +25,7 @@ try {
         Copy-Item -LiteralPath (Join-Path 'build\bin\tools' $name) -Destination "$stage\tools\$name"
     }
     Copy-Item -LiteralPath 'THIRD_PARTY.md' -Destination $stage
+    Copy-Item -LiteralPath 'licenses' -Destination $stage -Recurse
     $compiler = & (Join-Path $PSScriptRoot 'setup-installer.ps1')
     & $compiler "/DAppVersion=$Version" "/DPackageDir=$stage" "/DReleaseDir=$releaseDir" 'build\windows\installer.iss'
     if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
