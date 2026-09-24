@@ -5,5 +5,7 @@
 *.part
 coverage.out
 /.cache/
+/dist/
+/frontend/package.json.md5
 /frontend/wailsjs/
 *.syso

@@ -7,6 +7,52 @@
 
 ## Шууд ашиглах
 
+### Installer-аар бусдад тараах
+
+`FasterDM-Setup-0.2.0-x64.exe` нэг файлыг дамжуулахад хангалттай. Апп, YouTube
+хэрэгслүүд, лицензүүд бүгд багтана. Windows 10/11 x64 дээр administrator эрхгүйгээр
+`%LOCALAPPDATA%\Programs\FasterDM` дотор суулгана. Start Menu shortcut үүсгэнэ;
+Desktop shortcut сонголттой. Windows Settings → Apps-аас устгаж болно.
+Татсан файлуудыг устгахгүй. Шинэчлэхдээ ажиллаж буй аппыг эхлээд хаана.
+WebView2 байхгүй компьютер дээр анх нээхэд runtime татах интернэт шаардлагатай.
+
+Release: https://github.com/KOMONG-Adventure/Faster_DM/releases/latest
+
+**Репозиторий private бол зөвхөн эрхтэй хүмүүс release татна.** Installer файлыг
+шууд дамжуулахад GitHub эрх шаардлагагүй. Нийтэд тараах холбоосын хувьд public
+release repository шаардлагатай. Суулгагч одоогоор code-signing гэрчилгээгүй;
+installer болгох нь Windows-ийн итгэлцлийн анхааруулгыг автоматаар арилгахгүй.
+
+### Terminal / Git-ээр суулгах
+
+```powershell
+git clone https://github.com/KOMONG-Adventure/Faster_DM.git
+cd Faster_DM
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1
+# Цонхгүй суулгах:
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1 -Silent
+```
+
+Скрипт хамгийн сүүлийн stable release installer татаж, SHA-256 шалгаад суулгана.
+Go/Node build хэрэгслүүд эцсийн хэрэглэгчид шаардлагагүй. `-Version 0.2.0`-оор
+тодорхой хувилбар сонгож болно. Private release татахдаа репозиторт унших эрхтэй
+`GH_TOKEN` эсвэл `GITHUB_TOKEN` environment variable шаардлагатай; token-оо Git-д
+хадгалж болохгүй. ExecutionPolicy нь зөвхөн тухайн PowerShell процесст үйлчилнэ.
+
+### Installer build ба Release
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.ps1 -Version 0.2.0
+```
+
+Үр дүн `dist/0.2.0/`: installer, `install.ps1`, `SHA256SUMS.txt`.
+Inno Setup compiler-ийг албан ёсны URL, түгжсэн SHA-256-аар авч хэрэглэнэ.
+GitHub Actions → **Windows installer release** → **Run workflow** эсвэл
+`v0.2.1` зэрэг version tag push хийхэд installer build хийж Release-д байрлуулна.
+Release version-ийг аппын update checker болон installer-д ижил оруулна.
+
+### Portable апп ашиглах
+
 1. `FasterDM.exe`-г нээнэ. Өөр компьютерт зөөхдөө хажуугийн `tools` хавтсыг хамт хуулна.
 2. Файлын эсвэл YouTube видеоны холбоосоо оруулаад **Татаж эхлэх** дарна.
 3. **Файлын нэр бичих шаардлагагүй.** Серверийн `Content-Disposition`, URL болон
