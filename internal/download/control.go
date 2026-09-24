@@ -21,6 +21,15 @@ func NewControl() *Control {
 	return &Control{changed: make(chan struct{}), requests: make(map[uint64]context.CancelCauseFunc)}
 }
 
+func (c *Control) IsPaused() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.paused
+}
+
 // RequestContext нь гадаад таталтын процессод pause-cancel холбоос өгнө.
 func (c *Control) RequestContext(ctx context.Context) (context.Context, func(), error) {
 	return c.request(ctx)

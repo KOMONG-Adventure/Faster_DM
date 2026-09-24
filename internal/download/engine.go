@@ -89,11 +89,18 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 			return result, fmt.Errorf("дискний зай нөөцлөх: %w", err)
 		}
 	}
-	s := newScheduler(max(meta.size, 0), e.cfg.Workers, e.cfg.MinChunkSize)
+	workers := e.cfg.Workers
+	adaptive := e.cfg.Adaptive && meta.parallel && meta.size >= 64<<20
+	if e.cfg.Adaptive {
+		workers = min(4, workers)
+	}
+	s := newScheduler(max(meta.size, 0), workers, e.cfg.MinChunkSize)
 	if !meta.parallel {
 		s = newScheduler(max(meta.size, 0), 1, e.cfg.MinChunkSize)
 		s.total, s.chunks[0].end = meta.size, meta.size
+		workers = 1
 	}
+	s.setLimit(workers)
 	stop, stopped := make(chan struct{}), make(chan struct{})
 	emit := func(status string) {
 		if updates != nil {
@@ -133,7 +140,11 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 	if meta.size == 0 {
 		s.mark(s.chunks[0], "complete", false)
 	} else if meta.parallel {
-		err = e.parallel(ctx, rawURL, meta, f, s)
+		if adaptive {
+			err = e.adaptiveParallel(ctx, rawURL, meta, f, s)
+		} else {
+			err = e.parallel(ctx, rawURL, meta, f, s, workers)
+		}
 	} else {
 		err = e.sequential(ctx, rawURL, f, s)
 	}
@@ -164,13 +175,13 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 	return Result{Path: path, Bytes: final.Downloaded, Parallel: meta.parallel, Duration: time.Since(started)}, nil
 }
 
-func (e *Engine) parallel(ctx context.Context, url string, meta metadata, f *os.File, s *scheduler) error {
+func (e *Engine) parallel(ctx context.Context, url string, meta metadata, f *os.File, s *scheduler, workers int) error {
 	workCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var wg sync.WaitGroup
 	var once sync.Once
 	var firstErr error
-	for i := 0; i < e.cfg.Workers; i++ {
+	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -271,6 +282,7 @@ func (e *Engine) rangeOnce(ctx context.Context, url string, meta metadata, f *os
 			return nil
 		}
 		n, readErr := io.ReadFull(r.Body, buf[:capacity])
+		s.receivedBytes(n)
 		if n > 0 {
 			written, writeErr := f.WriteAt(buf[:n], offset)
 			s.advance(c, written)
@@ -349,6 +361,7 @@ func (e *Engine) sequentialOnce(ctx context.Context, url string, f *os.File, s *
 			return err
 		}
 		n, readErr := r.Body.Read(buf)
+		s.receivedBytes(n)
 		if n > 0 {
 			if r.ContentLength >= 0 && int64(n) > r.ContentLength-offset {
 				return ErrProtocol

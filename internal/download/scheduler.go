@@ -14,12 +14,15 @@ type chunk struct {
 }
 
 type scheduler struct {
-	mu       sync.Mutex
-	chunks   []*chunk
-	min      int64
-	total    int64
-	previous map[int]int64
-	last     time.Time
+	mu                                                   sync.Mutex
+	chunks                                               []*chunk
+	min                                                  int64
+	total                                                int64
+	previous                                             map[int]int64
+	last                                                 time.Time
+	received, written, previousReceived, previousWritten int64
+	retryCount                                           int
+	connectionLimit                                      int
 }
 
 func newScheduler(size int64, workers int, min int64) *scheduler {
@@ -92,6 +95,7 @@ func (s *scheduler) advance(c *chunk, n int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c.next += int64(n)
+	s.written += int64(n)
 	c.reserved = c.next
 }
 
@@ -99,8 +103,12 @@ func (s *scheduler) mark(c *chunk, status string, retry bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c.status = status
+	if status == "downloading" {
+		c.active = true
+	}
 	if retry {
 		c.retries++
+		s.retryCount++
 	}
 	if status == "complete" {
 		c.active = false
@@ -113,7 +121,17 @@ func (s *scheduler) snapshot(status string) Snapshot {
 	now := time.Now()
 	dt := now.Sub(s.last).Seconds()
 	r := Snapshot{Total: s.total, Status: status, Chunks: make([]ChunkSnapshot, 0, len(s.chunks))}
+	r.DiskMeasured = true
+	r.ConnectionLimit = s.connectionLimit
+	if dt > 0 {
+		r.NetworkBytesPerSecond = float64(s.received-s.previousReceived) / dt
+		r.DiskBytesPerSecond = float64(s.written-s.previousWritten) / dt
+	}
+	s.previousReceived, s.previousWritten = s.received, s.written
 	for _, c := range s.chunks {
+		if c.active && c.status == "downloading" {
+			r.ActiveConnections++
+		}
 		done := c.next - c.start
 		speed := float64(done-s.previous[c.id]) / dt
 		state := c.status
@@ -127,4 +145,32 @@ func (s *scheduler) snapshot(status string) Snapshot {
 	}
 	s.last = now
 	return r
+}
+
+func (s *scheduler) receivedBytes(n int) {
+	s.mu.Lock()
+	s.received += int64(n)
+	s.mu.Unlock()
+}
+
+// Worker бүрэн зогссоны дараа л хэсгийг дахин олгоно: WriteAt давхцахгүй.
+func (s *scheduler) release(c *chunk) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c.active, c.reserved, c.status = false, c.next, "queued"
+	if c.next == c.end {
+		c.status = "complete"
+	}
+}
+
+func (s *scheduler) counters() (int64, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.written, s.retryCount
+}
+
+func (s *scheduler) setLimit(n int) {
+	s.mu.Lock()
+	s.connectionLimit = n
+	s.mu.Unlock()
 }

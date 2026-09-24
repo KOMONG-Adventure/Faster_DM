@@ -13,7 +13,9 @@ var (
 )
 
 type Config struct {
-	Workers          int
+	Workers int
+	// Adaptive нь 64 MiB-аас том Range таталтын зэрэгцээ холболтыг автоматаар тохируулна.
+	Adaptive         bool
 	MinChunkSize     int64
 	BufferSize       int
 	MaxRetries       int
@@ -41,11 +43,16 @@ type ChunkSnapshot struct {
 }
 
 type Snapshot struct {
-	Total          int64           `json:"total"`
-	Downloaded     int64           `json:"downloaded"`
-	BytesPerSecond float64         `json:"bytesPerSecond"`
-	Status         string          `json:"status"`
-	Chunks         []ChunkSnapshot `json:"chunks"`
+	NetworkBytesPerSecond float64         `json:"networkBytesPerSecond"`
+	DiskBytesPerSecond    float64         `json:"diskBytesPerSecond"`
+	DiskMeasured          bool            `json:"diskMeasured"`
+	ActiveConnections     int             `json:"activeConnections"`
+	ConnectionLimit       int             `json:"connectionLimit"`
+	Total                 int64           `json:"total"`
+	Downloaded            int64           `json:"downloaded"`
+	BytesPerSecond        float64         `json:"bytesPerSecond"`
+	Status                string          `json:"status"`
+	Chunks                []ChunkSnapshot `json:"chunks"`
 }
 
 type Result struct {

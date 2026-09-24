@@ -50,6 +50,8 @@ type entry struct {
 	pausedAt       time.Time
 	pausedDuration time.Duration
 	speed          float64
+	networkSpeed   float64
+	diskSpeed      float64
 	rateAt         time.Time
 }
 type Manager struct {
@@ -145,8 +147,8 @@ func (m *Manager) Start(req Request) (Job, error) {
 	if err := validateFilename(req.Filename); err != nil {
 		return Job{}, err
 	}
-	if req.Workers != 4 && req.Workers != 8 && req.Workers != 16 && req.Workers != 32 {
-		return Job{}, errors.New("Холболтын тоо 4, 8, 16 эсвэл 32 байна.")
+	if req.Workers != 0 && req.Workers != 4 && req.Workers != 8 && req.Workers != 16 && req.Workers != 32 {
+		return Job{}, errors.New("Автомат эсвэл 4, 8, 16, 32 холболт сонгоно уу.")
 	}
 	if req.Folder == "" {
 		req.Folder = DefaultFolder()
@@ -238,13 +240,20 @@ func (m *Manager) update(id string, change func(*Job)) {
 	if e.job.Status == "downloading" {
 		alpha := 1 - math.Exp(-now.Sub(e.rateAt).Seconds()/2)
 		e.speed += alpha * (e.job.Progress.BytesPerSecond - e.speed)
+		e.networkSpeed += alpha * (e.job.Progress.NetworkBytesPerSecond - e.networkSpeed)
+		e.diskSpeed += alpha * (e.job.Progress.DiskBytesPerSecond - e.diskSpeed)
 		e.job.Progress.BytesPerSecond = e.speed
+		e.job.Progress.NetworkBytesPerSecond = e.networkSpeed
+		e.job.Progress.DiskBytesPerSecond = e.diskSpeed
 		if e.speed > 1024 && e.job.Progress.Total > 0 {
 			e.job.ETASeconds = math.Max(0, float64(e.job.Progress.Total-e.job.Progress.Downloaded)/e.speed)
 		}
 	} else {
 		e.speed = 0
+		e.networkSpeed, e.diskSpeed = 0, 0
 		e.job.Progress.BytesPerSecond = 0
+		e.job.Progress.NetworkBytesPerSecond, e.job.Progress.DiskBytesPerSecond = 0, 0
+		e.job.Progress.ActiveConnections = 0
 		if e.job.Status == "complete" {
 			e.job.ETASeconds = 0
 		}
@@ -297,6 +306,11 @@ func (m *Manager) run(ctx context.Context, job Job, source string, control *down
 	}
 	cfg := download.DefaultConfig()
 	cfg.Workers = job.Workers
+	if cfg.Workers == 0 {
+		cfg.Workers, cfg.Adaptive = 32, true
+		cfg.BufferSize = 512 << 10
+		cfg.MinChunkSize = 4 << 20
+	}
 	cfg.Control = control
 	engine, err := download.New(cfg)
 	if err != nil {
@@ -415,8 +429,11 @@ func (m *Manager) setPaused(id string, paused bool) error {
 		e.control.Resume()
 	}
 	e.speed = 0
+	e.networkSpeed, e.diskSpeed = 0, 0
 	e.rateAt = now
 	e.job.Progress.BytesPerSecond = 0
+	e.job.Progress.NetworkBytesPerSecond, e.job.Progress.DiskBytesPerSecond = 0, 0
+	e.job.Progress.ActiveConnections = 0
 	e.job.ETASeconds = -1
 	e.job.Revision++
 	job := e.job
