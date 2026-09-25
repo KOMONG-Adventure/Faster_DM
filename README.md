@@ -2,6 +2,12 @@
 
 Репозиторий: https://github.com/KOMONG-Adventure/Faster_DM
 
+[Татах / Download](DISTRIBUTION.md) · [MIT лиценз](LICENSE) ·
+[Нууцлал / Privacy](PRIVACY.md) · [Code signing policy](CODE_SIGNING_POLICY.md)
+
+SignPath Foundation-д хүсэлт гаргахаар бэлтгэж байна. Одоогийн release-үүдэд
+SignPath гарын үсэг орсон эсвэл зөвшөөрөгдсөн гэж мэдэгдээгүй.
+
 Монгол хэлтэй **Wails v2 + React 18 dashboard** болон Go таталтын engine.
 Давхар товшиж нээх файл: **`build/bin/FasterDM.exe`**. Таталт дуусахад цонх хаагдахгүй.
 
