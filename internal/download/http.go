@@ -23,7 +23,29 @@ type responseError struct {
 	retryAfter time.Duration
 }
 
-func (e *responseError) Error() string { return fmt.Sprintf("HTTP %d", e.status) }
+func (e *responseError) Error() string {
+	switch e.status {
+	case 503:
+		return "HTTP 503: Сервер түр ачаалалтай эсвэл үйлчилгээ нь боломжгүй байна. Түр хүлээгээд дахин оролдоно уу."
+	case 429:
+		return "HTTP 429: Сервер хүсэлт/холболтын тоог хязгаарлалаа. Зэрэг таталтыг 1 болгож түр хүлээнэ үү."
+	case 401, 403:
+		return fmt.Sprintf("HTTP %d: Холбоосын эрх эсвэл хугацааг шалгана уу. Шинэ шууд холбоос шаардлагатай байж болно.", e.status)
+	default:
+		return fmt.Sprintf("HTTP %d", e.status)
+	}
+}
+
+// Metadata requests use the same bounded retry policy as the file engine.
+func HTTPStatusError(resp *http.Response) error { return statusError(resp) }
+func CanRetry(err error) bool                   { return retryable(err) }
+func WaitRetry(ctx context.Context, attempt int, cause error) error {
+	return backoff(ctx, attempt, cause)
+}
+func overloaded(err error) bool {
+	var s *responseError
+	return errors.As(err, &s) && (s.status == 429 || s.status == 503)
+}
 
 // Timer нь хүсэлтийн нийт хугацаа бус, өгөгдөл ирэхгүй удах хугацааг хязгаарлана.
 type idleBody struct {
@@ -65,7 +87,7 @@ func (e *Engine) get(ctx context.Context, url, byteRange, etag string) (*http.Re
 		return nil, err
 	}
 	req.Header.Set("Accept-Encoding", "identity")
-	req.Header.Set("User-Agent", "FasterDM/0.1")
+	req.Header.Set("User-Agent", "FasterDM/0.5")
 	if byteRange != "" {
 		req.Header.Set("Range", byteRange)
 	}
@@ -217,13 +239,22 @@ func retryable(err error) bool {
 	return errors.As(err, &netErr) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
-func backoff(ctx context.Context, attempt int, cause error) error {
+func retryDelay(attempt int, cause error) time.Duration {
 	delay := 250 * time.Millisecond * time.Duration(1<<min(attempt, 5))
+	if overloaded(cause) {
+		delay = min(30*time.Second, 2*time.Second*time.Duration(1<<min(attempt, 4)))
+	}
 	delay += time.Duration(rand.Int64N(int64(delay/2) + 1))
 	var status *responseError
 	if errors.As(cause, &status) && status.retryAfter > delay {
 		delay = status.retryAfter
 	}
+	return delay
+}
+func backoff(ctx context.Context, attempt int, cause error) error {
+	return waitDelay(ctx, retryDelay(attempt, cause))
+}
+func waitDelay(ctx context.Context, delay time.Duration) error {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {

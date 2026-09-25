@@ -45,6 +45,8 @@ type ChunkSnapshot struct {
 }
 
 type Snapshot struct {
+	Message               string          `json:"message,omitempty"`
+	RetryInSeconds        int             `json:"retryInSeconds,omitempty"`
 	NetworkBytesPerSecond float64         `json:"networkBytesPerSecond"`
 	DiskBytesPerSecond    float64         `json:"diskBytesPerSecond"`
 	DiskMeasured          bool            `json:"diskMeasured"`

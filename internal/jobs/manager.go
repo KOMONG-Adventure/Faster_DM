@@ -159,8 +159,8 @@ func (m *Manager) Start(req Request) (Job, error) {
 	if err := validateFilename(req.Filename); err != nil {
 		return Job{}, err
 	}
-	if req.Workers != 0 && req.Workers != 4 && req.Workers != 8 && req.Workers != 16 && req.Workers != 32 {
-		return Job{}, errors.New("Автомат эсвэл 4, 8, 16, 32 холболт сонгоно уу.")
+	if req.Workers != 0 && req.Workers != 1 && req.Workers != 2 && req.Workers != 4 && req.Workers != 8 && req.Workers != 16 && req.Workers != 32 {
+		return Job{}, errors.New("Автомат эсвэл 1, 2, 4, 8, 16, 32 холболт сонгоно уу.")
 	}
 	if req.Folder == "" {
 		req.Folder = DefaultFolder()
@@ -256,6 +256,8 @@ func (m *Manager) update(id string, change func(*Job)) {
 		}
 	} else {
 		e.speed = 0
+		e.job.Progress.Message = ""
+		e.job.Progress.RetryInSeconds = 0
 		e.networkSpeed, e.diskSpeed = 0, 0
 		e.job.Progress.BytesPerSecond = 0
 		e.job.Progress.NetworkBytesPerSecond, e.job.Progress.DiskBytesPerSecond = 0, 0

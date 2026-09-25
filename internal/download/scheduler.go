@@ -14,6 +14,8 @@ type chunk struct {
 }
 
 type scheduler struct {
+	retryAt                                              time.Time
+	message                                              string
 	mu                                                   sync.Mutex
 	chunks                                               []*chunk
 	min                                                  int64
@@ -121,6 +123,10 @@ func (s *scheduler) snapshot(status string) Snapshot {
 	now := time.Now()
 	dt := now.Sub(s.last).Seconds()
 	r := Snapshot{Total: s.total, Status: status, Chunks: make([]ChunkSnapshot, 0, len(s.chunks))}
+	r.Message = s.message
+	if !s.retryAt.IsZero() {
+		r.RetryInSeconds = max(0, int(time.Until(s.retryAt).Seconds()+0.999))
+	}
 	r.DiskMeasured = true
 	r.ConnectionLimit = s.connectionLimit
 	if dt > 0 {

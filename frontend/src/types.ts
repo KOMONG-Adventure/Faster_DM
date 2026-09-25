@@ -1,6 +1,6 @@
 export type Status = 'queued' | 'probing' | 'downloading' | 'paused' | 'canceling' | 'complete' | 'failed' | 'canceled';
 export interface Chunk { id: number; start: number; end: number; downloaded: number; bytesPerSecond: number; status: string; retries: number }
-export interface Progress { networkBytesPerSecond?: number; diskBytesPerSecond?: number; diskMeasured?: boolean; activeConnections?: number; connectionLimit?: number; total: number; downloaded: number; bytesPerSecond: number; status: string; chunks: Chunk[] }
+export interface Progress { message?: string; retryInSeconds?: number; networkBytesPerSecond?: number; diskBytesPerSecond?: number; diskMeasured?: boolean; activeConnections?: number; connectionLimit?: number; total: number; downloaded: number; bytesPerSecond: number; status: string; chunks: Chunk[] }
 export interface Job { url?: string; missing?: boolean; rateLimit?: number; restored?: boolean; id: string; filename: string; path: string; category: string; createdAt: string; revision: number; workers: number; status: Status; error: string; progress: Progress; elapsedSeconds: number; etaSeconds: number; sourceKind: string }
 export interface Request { url: string; filename: string; folder: string; workers: number }
 export interface Settings { concurrent: number; rateLimit: number; notifications: boolean }

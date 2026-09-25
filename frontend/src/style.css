@@ -21,3 +21,4 @@
 .history-actions { flex-wrap: wrap; justify-content: flex-end; }
 .card-footer { flex-wrap: wrap; gap: 10px; }
 .status.queued { background: #f2f0ff; color: #795acb; }
+.retry-notice { padding: 0 18px 12px; color: #9a6700; font-size: 12px; line-height: 1.6; }

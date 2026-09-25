@@ -67,9 +67,9 @@ func (a *App) InstallUpdate(expectedTag string) (err error) {
 		return errors.New("Шинэчлэлт аль хэдийн эхэлсэн.")
 	}
 	for _, job := range a.manager.List() {
-		if job.Status == "queued" || job.Status == "probing" || job.Status == "downloading" || job.Status == "paused" || job.Status == "canceling" {
+		if job.Status == "queued" || job.Status == "probing" || job.Status == "downloading" || job.Status == "canceling" {
 			a.actionMu.Unlock()
-			return errors.New("Эхлээд идэвхтэй болон түр зогсоосон таталтаа дуусгах эсвэл цуцална уу. Шинэчлэлт аппыг дахин нээнэ.")
+			return errors.New("Идэвхтэй болон дараалалд байгаа таталтаа түр зогсоогоод шинэчилнэ үү. Хадгалсан таталтаа дараа нь үргэлжлүүлж болно.")
 		}
 	}
 	a.updating = true
@@ -165,6 +165,9 @@ func (a *App) showFromTray() {
 	a.windowHidden = false
 }
 func (a *App) beforeClose(ctx context.Context) bool {
+	if a.GetUpdateProgress().Phase == "installing" {
+		return false
+	}
 	active := false
 	for _, j := range a.manager.List() {
 		if j.Status == "queued" || j.Status == "probing" || j.Status == "downloading" || j.Status == "canceling" || j.Status == "paused" {

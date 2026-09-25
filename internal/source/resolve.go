@@ -12,9 +12,25 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/KOMONG-Adventure/Faster_DM/internal/download"
 )
 
 func Filename(ctx context.Context, rawURL string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	for attempt := 0; ; attempt++ {
+		name, err := filenameOnce(ctx, rawURL)
+		if err == nil || attempt >= 3 || !download.CanRetry(err) || ctx.Err() != nil {
+			return name, err
+		}
+		if waitErr := download.WaitRetry(ctx, attempt, err); waitErr != nil {
+			return "", fmt.Errorf("%w (хүлээх хугацаа дууссан эсвэл цуцалсан)", err)
+		}
+	}
+}
+
+func filenameOnce(ctx context.Context, rawURL string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -23,6 +39,7 @@ func Filename(ctx context.Context, rawURL string) (string, error) {
 	}
 	req.Header.Set("Range", "bytes=0-0")
 	req.Header.Set("Accept-Encoding", "identity")
+	req.Header.Set("User-Agent", "FasterDM/0.5")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("Файлын нэр тодорхойлох: %w", err)
@@ -30,7 +47,7 @@ func Filename(ctx context.Context, rawURL string) (string, error) {
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if !(resp.StatusCode == 416 && resp.Header.Get("Content-Range") == "bytes */0") {
-			return "", fmt.Errorf("Сервер HTTP %d буцаалаа", resp.StatusCode)
+			return "", download.HTTPStatusError(resp)
 		}
 	}
 	name := ""

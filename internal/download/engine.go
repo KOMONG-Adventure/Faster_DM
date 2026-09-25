@@ -186,11 +186,7 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 	if meta.size == 0 {
 		s.mark(s.chunks[0], "complete", false)
 	} else if meta.parallel {
-		if adaptive {
-			err = e.adaptiveParallel(ctx, rawURL, meta, f, s)
-		} else {
-			err = e.parallel(ctx, rawURL, meta, f, s, workers)
-		}
+		err = e.parallelWithRecovery(ctx, rawURL, meta, f, s, workers, adaptive)
 	} else {
 		err = e.sequential(ctx, rawURL, f, s)
 	}
@@ -288,8 +284,12 @@ func (e *Engine) downloadChunk(ctx context.Context, url string, meta metadata, f
 			s.mark(c, "paused", false)
 			continue
 		}
+		if overloaded(err) {
+			s.mark(c, "retrying", true)
+			return fmt.Errorf("chunk %d: %w", c.id+1, err)
+		}
 		if attempt >= e.cfg.MaxRetries || !retryable(err) {
-			return fmt.Errorf("chunk %d: %w", c.id, err)
+			return fmt.Errorf("chunk %d: %w", c.id+1, err)
 		}
 		s.mark(c, "retrying", true)
 		if err := backoff(ctx, attempt, err); err != nil {

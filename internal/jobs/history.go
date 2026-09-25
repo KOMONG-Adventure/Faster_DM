@@ -71,6 +71,8 @@ func NewPersistent(ctx context.Context, emit func(Job), dir string) (*Manager, e
 		job.Progress.NetworkBytesPerSecond = 0
 		job.Progress.DiskBytesPerSecond = 0
 		job.Progress.ActiveConnections = 0
+		job.Progress.Message = ""
+		job.Progress.RetryInSeconds = 0
 		job.Progress.Chunks = []download.ChunkSnapshot{}
 		job.ETASeconds = -1
 		if job.Status == "complete" {
