@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KOMONG-Adventure/Faster_DM/internal/diskspace"
 	"github.com/KOMONG-Adventure/Faster_DM/internal/download"
 	"github.com/KOMONG-Adventure/Faster_DM/internal/source"
 )
@@ -210,6 +211,47 @@ func DownloadWithOptions(ctx context.Context, raw, destination string, expectedS
 		}
 	}()
 	parts := make(map[string]int64)
+	var existing int64
+	_ = filepath.WalkDir(work, func(path string, d os.DirEntry, err error) error {
+		if err == nil && d.Type().IsRegular() {
+			if info, e := d.Info(); e == nil {
+				existing += info.Size()
+			}
+		}
+		return nil
+	})
+	if expectedSize > (1<<63-1)/2 {
+		return 0, diskspace.ErrLow
+	}
+	if err := diskspace.Check(work, max(0, max(expectedSize, 0)*2-existing)); err != nil {
+		return 0, err
+	}
+	ctx, stopSpace := context.WithCancelCause(ctx)
+	spaceDone := make(chan struct{})
+	go func() {
+		defer close(spaceDone)
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if err := diskspace.Check(work, 0); err != nil {
+					stopSpace(err)
+					return
+				}
+			}
+		}
+	}()
+	defer func() {
+		cause := context.Cause(ctx)
+		stopSpace(nil)
+		<-spaceDone
+		if returnErr != nil && diskspace.IsFull(cause) {
+			returnErr = cause
+		}
+	}()
 	for {
 		rctx, release, err := control.RequestContext(ctx)
 		if err != nil {
@@ -275,6 +317,10 @@ func DownloadWithOptions(ctx context.Context, raw, destination string, expectedS
 			continue
 		}
 		if err != nil {
+			message := strings.ToLower(string(stderr.data))
+			if strings.Contains(message, "no space left") || strings.Contains(message, "not enough space on the disk") || strings.Contains(message, "disk full") {
+				return 0, diskspace.ErrLow
+			}
 			return 0, readableError(stderr.data)
 		}
 		if readErr != nil {

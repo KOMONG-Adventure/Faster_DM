@@ -1,6 +1,6 @@
 # Faster DM privacy policy
 
-Last updated: 2026-09-25
+Last updated: 2026-09-26
 
 Faster DM is a desktop application. Its application code does not implement
 advertising, usage analytics, or automatic upload of download history to the
@@ -30,7 +30,7 @@ this behavior with the clipboard-autofill checkbox.
 
 ## Network requests and third parties
 
-- Starting a download contacts the supplied URL, its redirects, and servers needed
+- Checking disk requirements or starting a download contacts the supplied URL, its redirects, and servers needed
   to retrieve the requested content. These servers receive normal connection
   information such as your IP address and request headers. Their policies apply.
 - YouTube downloads use yt-dlp and associated tools to contact YouTube and its
@@ -51,3 +51,12 @@ Notifications can be disabled in Faster DM's download settings.
 Privacy questions can be raised through the
 [project's GitHub issues](https://github.com/KOMONG-Adventure/Faster_DM/issues).
 Do not post private download URLs, tokens, or personal files in public issues.
+
+## Optional browser extension
+
+The Chrome/Edge extension sends only the HTTP/HTTPS URL you select to a local
+native host. Pending URLs are stored in `%APPDATA%\FasterDM\browser-inbox`
+until the app accepts them. The popup reads the active tab URL and, only with
+your permission, displays ten recent browser downloads. It does not forward
+cookies, passwords, or browsing history to maintainers. Local extension storage
+keeps the last delivery status. Browser downloads are not automatically canceled.

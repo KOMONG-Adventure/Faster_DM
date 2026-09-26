@@ -432,3 +432,10 @@ v0.4.0-өөс өмнөх аппад хуучин товч хэвээр тул э
 installer-аар суулгана. Дараагийн хувилбаруудаас шууд суулгах товчийг ашиглана.
 Автомат rollback, background scheduled update, code signing хараахан ороогүй.
 SHA-256 нь таталтын бүрэн бүтэн байдлыг шалгана; code-signing гэрчилгээ биш.
+
+## v0.6.0: Disk space and browser integration
+
+Disk preflight displays file size, available capacity and a 64 MiB reserve.
+Low space pauses downloads; HTTP resume requires server Range/ETag support.
+See [Chrome/Edge extension setup](extension/README.md). Links populate the app;
+the user checks disk space and starts the download.

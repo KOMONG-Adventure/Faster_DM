@@ -22,3 +22,4 @@
 .card-footer { flex-wrap: wrap; gap: 10px; }
 .status.queued { background: #f2f0ff; color: #795acb; }
 .retry-notice { padding: 0 18px 12px; color: #9a6700; font-size: 12px; line-height: 1.6; }
+.disk-report{display:flex;flex-direction:column;gap:6px;margin-top:14px;padding:12px;background:#eef8f3;border:1px solid #cbe8d8;border-radius:9px;font-size:12px;color:#326550}.disk-report.low{background:#fff5e9;border-color:#efd6b7;color:#95581a}.disk-report small{font-size:11px}.disk-report button{align-self:flex-start;text-decoration:underline}

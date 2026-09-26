@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/KOMONG-Adventure/Faster_DM/internal/diskspace"
 	"github.com/KOMONG-Adventure/Faster_DM/internal/download"
 	"github.com/KOMONG-Adventure/Faster_DM/internal/media"
 	"github.com/KOMONG-Adventure/Faster_DM/internal/source"
@@ -317,6 +318,10 @@ func (m *Manager) run(ctx context.Context, job Job, source string, control *down
 			if err != nil {
 				j.Status = "failed"
 				j.Error = err.Error()
+				if diskspace.IsFull(err) {
+					j.Status = "paused"
+					j.Error = "Дискний зай хүрэлцэхгүй. Зай гаргаад Үргэлжлүүлэх товчийг дарна уу. Татсан хэсгүүд хадгалагдсан."
+				}
 				if ctx.Err() != nil {
 					j.Status = "canceled"
 					j.Error = "Таталтыг цуцалсан."
@@ -375,6 +380,10 @@ func (m *Manager) run(ctx context.Context, job Job, source string, control *down
 		if err != nil {
 			j.Status = "failed"
 			j.Error = err.Error()
+			if diskspace.IsFull(err) {
+				j.Status = "paused"
+				j.Error = "Дискний зай хүрэлцэхгүй. Зай гаргаад Үргэлжлүүлэх товчийг дарна уу. Татсан хэсгүүд хадгалагдсан."
+			}
 			if ctx.Err() != nil {
 				j.Status = "canceled"
 				j.Error = "Таталтыг цуцалсан."

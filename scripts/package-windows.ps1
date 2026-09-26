@@ -1,5 +1,5 @@
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.5.1',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.6.0',
     [switch]$ReuseMedia
 )
 $ErrorActionPreference = 'Stop'
@@ -21,6 +21,10 @@ try {
     $releaseDir = Join-Path $projectRoot "dist\$Version"
     New-Item -ItemType Directory -Force -Path "$stage\tools",$releaseDir | Out-Null
     Copy-Item -LiteralPath 'build\bin\FasterDM-package.exe' -Destination "$stage\FasterDM.exe"
+    go build -trimpath -ldflags '-H windowsgui' -o "$stage\FasterDM-browser-host.exe" ./cmd/browser-host
+    if ($LASTEXITCODE -ne 0) { throw 'Browser host build failed' }
+    Copy-Item -LiteralPath 'extension' -Destination "$stage\extension" -Recurse
+    Copy-Item -LiteralPath 'extension\native-host.template.json' -Destination "$stage\native-host.json"
     foreach ($name in @('yt-dlp.exe','deno.exe','ffmpeg.exe','ffprobe.exe','Deno-LICENSE.md','FFmpeg-LICENSE.txt','yt-dlp-LICENSE.txt','THIRD_PARTY.md')) {
         Copy-Item -LiteralPath (Join-Path 'build\bin\tools' $name) -Destination "$stage\tools\$name"
     }
@@ -31,7 +35,8 @@ try {
     & $compiler "/DAppVersion=$Version" "/DPackageDir=$stage" "/DReleaseDir=$releaseDir" 'build\windows\installer.iss'
     if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install.ps1') -Destination $releaseDir -Force
-    $checksums = foreach ($name in @("FasterDM-Setup-$Version-x64.exe", 'install.ps1')) {
+    Compress-Archive -LiteralPath 'extension' -DestinationPath "$releaseDir\FasterDM-Extension-$Version.zip" -Force
+    $checksums = foreach ($name in @("FasterDM-Setup-$Version-x64.exe", "FasterDM-Extension-$Version.zip", 'install.ps1')) {
         $hash = (Get-FileHash -LiteralPath (Join-Path $releaseDir $name) -Algorithm SHA256).Hash.ToLowerInvariant()
         "$hash  $name"
     }

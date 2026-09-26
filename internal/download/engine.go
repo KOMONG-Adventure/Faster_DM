@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/KOMONG-Adventure/Faster_DM/internal/diskspace"
 )
 
 type Engine struct {
@@ -102,6 +104,9 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 	}()
 	// Windows/Linux дээр disk allocation-ийг таталт эхлэхээс өмнө нөөцөлнө.
 	if e.cfg.ResumePath == "" && (meta.parallel || meta.size == 0) {
+		if err := diskspace.Check(filepath.Dir(path), meta.size); err != nil {
+			return result, err
+		}
 		if err := allocate(f, meta.size); err != nil {
 			return result, fmt.Errorf("дискний зай нөөцлөх: %w", err)
 		}
@@ -124,6 +129,9 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 			return result, restoreErr
 		}
 		if !restored && (meta.parallel || meta.size == 0) {
+			if err := diskspace.Check(filepath.Dir(path), meta.size); err != nil {
+				return result, err
+			}
 			if err = allocate(f, meta.size); err != nil {
 				return result, err
 			}
@@ -138,6 +146,7 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 	ctx, cancelWork := context.WithCancel(ctx)
 	defer cancelWork()
 	var checkpointErr error
+	var spaceErr error
 	var stopOnce sync.Once
 	closeCheckpoint := func() { stopOnce.Do(func() { close(stop); <-stopped }) }
 	emit := func(status string) {
@@ -153,6 +162,8 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 		defer close(stopped)
 		ticker := time.NewTicker(e.cfg.ProgressInterval)
 		checkpointTimer := time.NewTicker(5 * time.Second)
+		spaceTimer := time.NewTicker(time.Second)
+		defer spaceTimer.Stop()
 		defer checkpointTimer.Stop()
 		defer ticker.Stop()
 		for {
@@ -161,6 +172,13 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 				return
 			case <-ticker.C:
 				emit("downloading")
+			case <-spaceTimer.C:
+				if spaceErr == nil {
+					spaceErr = diskspace.Check(filepath.Dir(path), 0)
+					if spaceErr != nil {
+						cancelWork()
+					}
+				}
 			case <-checkpointTimer.C:
 				if e.cfg.ResumePath != "" && meta.parallel {
 					checkpointErr = saveCheckpoint(e.cfg.ResumePath+".json", rawURL, meta, f, s)
@@ -200,9 +218,15 @@ func (e *Engine) Download(ctx context.Context, rawURL, destination string, updat
 		if checkpointErr != nil {
 			return result, checkpointErr
 		}
+		if spaceErr != nil {
+			return result, spaceErr
+		}
 		return result, err
 	}
 	closeCheckpoint()
+	if spaceErr != nil {
+		return result, spaceErr
+	}
 	if checkpointErr != nil {
 		return result, checkpointErr
 	}
@@ -410,6 +434,9 @@ func (e *Engine) sequentialOnce(ctx context.Context, url string, f *os.File, s *
 		return err
 	}
 	if r.ContentLength >= 0 {
+		if err := diskspace.Check(filepath.Dir(f.Name()), r.ContentLength); err != nil {
+			return err
+		}
 		if err := allocate(f, r.ContentLength); err != nil {
 			return err
 		}

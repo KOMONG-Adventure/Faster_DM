@@ -1,6 +1,10 @@
 import type { Job, Request, State, Settings } from './types';
 
+export interface DiskReport {filename: string; path: string; total: number; required: number; free: number; enough: boolean; estimated: boolean}
 interface API {
+ CheckDiskSpace(request: Request): Promise<DiskReport>;
+ GetBrowserLink(): Promise<{id: string; url: string}>;
+ AcceptBrowserLink(id: string): Promise<void>;
  SetDownloadSettings(settings: Settings): Promise<void>;
  RemoveHistory(id: string): Promise<void>;
  RetryDownload(id: string): Promise<Job>;

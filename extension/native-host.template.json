@@ -1,0 +1,9 @@
+{
+  "name": "com.komong.fasterdm",
+  "description": "Faster DM browser bridge",
+  "path": "FasterDM-browser-host.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://ppifjgnggblnhpndbldhbcakkbcipkof/"
+  ]
+}

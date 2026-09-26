@@ -36,12 +36,21 @@ RestartApplications=no
 
 [Tasks]
 Name: desktopicon; Description: "Desktop дээр товчлол үүсгэх"; Flags: unchecked
+Name: browserbridge; Description: "Chrome/Edge өргөтгөлийн холболт бүртгэх"; Flags: checkedonce
 
 [Files]
 Source: "{#PackageDir}\FasterDM.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PackageDir}\FasterDM-browser-host.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PackageDir}\native-host.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PackageDir}\extension\*"; DestDir: "{app}\extension"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PackageDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PackageDir}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PackageDir}\THIRD_PARTY.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PackageDir}\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
+
+[Registry]
+Root: HKCU; Subkey: "Software\Google\Chrome\NativeMessagingHosts\com.komong.fasterdm"; ValueType: string; ValueName: ""; ValueData: "{app}\native-host.json"; Flags: uninsdeletekey; Tasks: browserbridge
+Root: HKCU; Subkey: "Software\Microsoft\Edge\NativeMessagingHosts\com.komong.fasterdm"; ValueType: string; ValueName: ""; ValueData: "{app}\native-host.json"; Flags: uninsdeletekey; Tasks: browserbridge
 
 [Icons]
 Name: "{group}\Faster DM"; Filename: "{app}\FasterDM.exe"

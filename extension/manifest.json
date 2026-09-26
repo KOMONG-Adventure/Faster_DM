@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Faster DM",
+  "version": "0.6.0",
+  "description": "Chrome/Edge-ээс файл болон YouTube холбоосыг Faster DM рүү дамжуулна.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmcdbL3k331LCAldpRI5He8ha9QlKT1alljYr8K/jyNrpE8y6vJlrfkdl08nkfjXAT7PoyuEkoCyfzPvC1UemZGOXV/DPw045+1FMtO1OZoNmUcl0Z1CmDVV9Lf+JNnnv/95hBbkn46lCPF5bGADz89otQC5LAoOltecvj9Ys++fSXqJaklyUV47QU5MP0v8HQtruEuB4mydBmRpJtgDSaMWtJKnsDU9G31rrSZ5EQ/fyF/RUggwYQe+SQjToxAuGHT672GJaR6uuMJqHnWZsQ8X6FurLCbq0FhdipsP3TavEcPNXxUPPNh1+1rLcSYhaSlzaj4SrQaKxa6Nfujal/QIDAQAB",
+  "permissions": [
+    "nativeMessaging",
+    "contextMenus",
+    "activeTab",
+    "storage"
+  ],
+  "optional_permissions": [
+    "downloads"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Faster DM"
+  }
+}

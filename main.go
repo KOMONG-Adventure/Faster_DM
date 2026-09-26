@@ -18,9 +18,10 @@ func main() {
 	app := NewApp()
 	err := wails.Run(&options.App{
 		Title: "Faster DM", Width: 1320, Height: 880, MinWidth: 1000, MinHeight: 720,
-		BackgroundColour: &options.RGBA{R: 246, G: 248, B: 250, A: 255},
-		AssetServer:      &assetserver.Options{Assets: assets},
-		OnStartup:        app.startup, OnShutdown: app.shutdown, OnBeforeClose: app.beforeClose,
+		BackgroundColour:   &options.RGBA{R: 246, G: 248, B: 250, A: 255},
+		AssetServer:        &assetserver.Options{Assets: assets},
+		SingleInstanceLock: &options.SingleInstanceLock{UniqueId: "FasterDM-7442671B-FE16-48CB-8F03-89835AF7A8D4", OnSecondInstanceLaunch: func(data options.SecondInstanceData) { app.showFromTray() }},
+		OnStartup:          app.startup, OnShutdown: app.shutdown, OnBeforeClose: app.beforeClose,
 		OnDomReady: app.startTray,
 		Bind:       []interface{}{app},
 	})
