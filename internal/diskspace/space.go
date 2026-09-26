@@ -40,7 +40,7 @@ func Check(path string, needed int64) error {
 		return fmt.Errorf("дискний зай шалгах: %w", err)
 	}
 	if !Enough(free, needed) {
-		return fmt.Errorf("%w: сул %.1f MiB, нэмэлт шаардлага %.1f MiB (+64 MiB нөөц). Зай гаргаад үргэлжлүүлнэ үү", ErrLow, float64(free)/(1<<20), float64(max(needed, 0))/(1<<20))
+		return fmt.Errorf("%w: сул %.1f MB, нэмэлт шаардлага %.1f MB (+67.1 MB нөөц). Зай гаргаад үргэлжлүүлнэ үү", ErrLow, float64(free)/1e6, float64(max(needed, 0))/1e6)
 	}
 	return nil
 }

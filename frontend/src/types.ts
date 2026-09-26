@@ -10,9 +10,9 @@ export const statusLabels: Record<string, string> = { probing: 'Холбогдо
 export const duration = (seconds: number = 0) => { const s = Math.max(0, Math.floor(seconds)); return [Math.floor(s/3600), Math.floor(s/60)%60, s%60].map(n=>String(n).padStart(2,'0')).join(':'); };
 export const remaining = (seconds: number) => !Number.isFinite(seconds) || seconds < 0 ? 'Тооцоолж байна…' : seconds < 60 ? `${Math.ceil(seconds)} сек` : seconds < 3600 ? `${Math.ceil(seconds/60)} мин` : `${Math.floor(seconds/3600)} цаг ${Math.ceil(seconds%3600/60)} мин`;
 export const bytes = (value: number) => {
-  if (value < 0) return 'Тодорхойгүй';
-  if (value < 1024) return `${value.toFixed(0)} B`;
-  const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), 4);
-  return `${(value / 1024 ** exponent).toFixed(exponent > 1 ? 1 : 0)} ${['B', 'KiB', 'MiB', 'GiB', 'TiB'][exponent]}`;
+  if (!Number.isFinite(value) || value < 0) return 'Тодорхойгүй';
+  if (value < 1000) return `${value.toFixed(0)} B`;
+  const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1000)), 4);
+  return `${(value / 1000 ** exponent).toFixed(exponent > 1 ? 1 : 0)} ${['B', 'KB', 'MB', 'GB', 'TB'][exponent]}`;
 };
 export const percent = (job: Job) => job.status === 'complete' ? 100 : job.progress.total > 0 ? Math.min(100, job.progress.downloaded / job.progress.total * 100) : 0;
